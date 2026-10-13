@@ -1,0 +1,1 @@
+ALTER TABLE conversations ADD COLUMN effort TEXT NOT NULL DEFAULT '';

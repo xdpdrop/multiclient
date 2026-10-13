@@ -1,0 +1,103 @@
+.historyBrowser {
+  min-height: 260px;
+}
+.historyResult {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-align: left;
+  padding: 14px;
+  margin: 8px 0;
+  width: 100%;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+}
+.historyResult small {
+  color: var(--muted);
+}
+.historyResult span {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.attachmentPreview {
+  display: block;
+  max-width: 100%;
+  max-height: 65vh;
+  object-fit: contain;
+  margin: auto;
+}
+.attachmentChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 5px;
+  padding: 6px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+}
+.attachmentChip img {
+  width: 60px;
+  height: 44px;
+  object-fit: cover;
+  border-radius: 4px;
+}
+.pdfPages {
+  max-height: 50vh;
+  overflow: auto;
+}
+.pdfPages section {
+  padding: 10px;
+  border: 1px solid var(--line-strong);
+  margin-bottom: 8px;
+}
+.pdfPages pre,
+.filePreview {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 65vh;
+  overflow: auto;
+}
+.highlightLine {
+  display: inline-block;
+  background: #e7bd6655;
+  width: 100%;
+}
+.setupNotice {
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  padding: 12px;
+  margin-bottom: 10px;
+  background: var(--surface);
+}
+.setupNotice p {
+  margin: 5px 0;
+  font-size: 13px;
+}
+.jumpLatest {
+  align-self: center;
+  position: sticky;
+  bottom: 8px;
+  margin: 8px;
+  z-index: 2;
+}
+.messageStatus small {
+  display: block;
+}
+.projectDefaults {
+  border-top: 1px solid var(--line-strong);
+  padding-top: 12px;
+  margin-top: 16px;
+}
+.commandActions {
+  display: grid;
+  gap: 8px;
+}
+@media (max-width: 1000px) {
+  .historyBrowser .row {
+    flex-wrap: wrap;
+  }
+}

@@ -1,0 +1,17 @@
+ALTER TABLE conversations ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE conversations ADD COLUMN parent_conversation_id TEXT REFERENCES conversations(id) ON DELETE SET NULL;
+ALTER TABLE conversations ADD COLUMN parent_message_id TEXT;
+ALTER TABLE provider_sessions ADD COLUMN configuration_revision TEXT NOT NULL DEFAULT '';
+ALTER TABLE turns ADD COLUMN error_info TEXT;
+CREATE TABLE drafts (key TEXT PRIMARY KEY, content TEXT NOT NULL, updated_at TEXT NOT NULL);
+CREATE TABLE project_defaults (project_id TEXT PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE, content TEXT NOT NULL);
+CREATE VIRTUAL TABLE message_search USING fts5(text, content='messages', content_rowid='seq', tokenize='unicode61');
+INSERT INTO message_search(message_search) VALUES('rebuild');
+CREATE TRIGGER message_search_insert AFTER INSERT ON messages BEGIN INSERT INTO message_search(rowid,text) VALUES(new.seq,new.text); END;
+CREATE TRIGGER message_search_delete AFTER DELETE ON messages BEGIN INSERT INTO message_search(message_search,rowid,text) VALUES('delete',old.seq,old.text); END;
+CREATE TRIGGER message_search_update AFTER UPDATE OF text ON messages BEGIN INSERT INTO message_search(message_search,rowid,text) VALUES('delete',old.seq,old.text); INSERT INTO message_search(rowid,text) VALUES(new.seq,new.text); END;
+CREATE VIRTUAL TABLE title_search USING fts5(title, content='conversations', content_rowid='rowid', tokenize='unicode61');
+INSERT INTO title_search(title_search) VALUES('rebuild');
+CREATE TRIGGER title_search_insert AFTER INSERT ON conversations BEGIN INSERT INTO title_search(rowid,title) VALUES(new.rowid,new.title); END;
+CREATE TRIGGER title_search_delete AFTER DELETE ON conversations BEGIN INSERT INTO title_search(title_search,rowid,title) VALUES('delete',old.rowid,old.title); END;
+CREATE TRIGGER title_search_update AFTER UPDATE OF title ON conversations BEGIN INSERT INTO title_search(title_search,rowid,title) VALUES('delete',old.rowid,old.title); INSERT INTO title_search(rowid,title) VALUES(new.rowid,new.title); END;

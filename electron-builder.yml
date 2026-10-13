@@ -1,0 +1,51 @@
+appId: org.multiclient.desktop
+productName: Multiclient
+beforePack: scripts/package-notices.cjs
+directories:
+  output: release
+files:
+  - out/**
+  - '!out/main/storage-test.js'
+  - '!out/main/history-test.js'
+  - '!out/main/features-test.js'
+  - '!out/main/comparison-test.js'
+  - '!out/main/artifacts-test.js'
+  - package.json
+  - LICENSE
+  - THIRD_PARTY_NOTICES.md
+extraResources:
+  - migrations
+  - from: out/dependency-licenses.json
+    to: dependency-licenses.json
+  - from: resources
+    to: icons
+    filter:
+      - icon.png
+      - icon.ico
+asarUnpack:
+  - node_modules/better-sqlite3/**
+  - node_modules/node-pty/**
+win:
+  extraResources:
+    - from: out/main/runtime-supervisor.exe
+      to: runtime-supervisor.exe
+  icon: resources/icon.ico
+  target:
+    - target: portable
+      arch: [x64]
+portable:
+  artifactName: Multiclient.exe
+  requestExecutionLevel: user
+  unpackDirName: false
+mac:
+  icon: resources/icon.png
+  category: public.app-category.developer-tools
+  target: dmg
+linux:
+  icon: resources/icon.png
+  category: Development
+  target:
+    - AppImage
+    - deb
+publish: null
+npmRebuild: false

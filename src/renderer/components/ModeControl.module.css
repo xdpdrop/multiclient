@@ -1,0 +1,27 @@
+.bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin: 0 14px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+}
+.bar > button {
+  color: var(--text);
+}
+.hint {
+  padding: 0 8px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.permissions {
+  border-radius: 9px;
+}
+.permissions[data-bypass='true'] {
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+}
+.permissions[data-bypass='true'] button {
+  color: var(--text);
+}
