@@ -1,9 +1,10 @@
 import { BrowserWindow, ipcMain, dialog, type IpcMainInvokeEvent } from 'electron';
 import { randomUUID, createHash } from 'node:crypto';
 import { readFile, writeFile, mkdtemp, rm, stat, mkdir } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
+import { realpathSync } from 'node:fs';
+import { basename, dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import {
@@ -86,6 +87,49 @@ export async function artifactDocument(
   } else content = `<pre>${escape(source)}</pre>`;
   return `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${STATIC_ARTIFACT_CSP}"><title>Static artifact preview</title><style>body{font:16px system-ui;line-height:1.5;padding:24px;color:#222;background:white}pre{white-space:pre-wrap;overflow-wrap:anywhere}img{max-width:100%}table{border-collapse:collapse}td,th{border:1px solid #bbb;padding:8px}</style></head><body>${content}</body></html>`;
 }
+function stripDevicePrefix(filePath: string) {
+  if (filePath.startsWith('\\\\?\\UNC\\')) return `\\\\${filePath.slice(8)}`;
+  if (filePath.startsWith('\\\\?\\')) return filePath.slice(4);
+  return filePath;
+}
+function canonicalLocalFile(fileUrl: string) {
+  let filePath: string;
+  try {
+    const url = new URL(fileUrl);
+    if (url.protocol !== 'file:' || url.hostname) return null;
+    filePath = fileURLToPath(url);
+  } catch {
+    return null;
+  }
+  const parent = dirname(filePath);
+  let resolvedParent: string;
+  try {
+    resolvedParent = stripDevicePrefix(realpathSync.native(parent));
+  } catch {
+    resolvedParent = resolve(parent);
+  }
+  const candidate = join(resolvedParent, basename(filePath));
+  try {
+    return stripDevicePrefix(realpathSync.native(candidate));
+  } catch {
+    return candidate;
+  }
+}
+function pathKey(filePath: string) {
+  return process.platform === 'win32' ? filePath.toLowerCase() : filePath;
+}
+/** Match one allowlisted file after decoding and realpath, not a directory prefix. */
+export function fileRequestAllowed(requestUrl: string, allowedFiles: ReadonlySet<string>) {
+  if (requestUrl.startsWith('data:')) return true;
+  const requested = canonicalLocalFile(requestUrl);
+  if (!requested) return false;
+  const requestedKey = pathKey(requested);
+  for (const allowed of allowedFiles) {
+    const key = canonicalLocalFile(allowed);
+    if (key && pathKey(key) === requestedKey) return true;
+  }
+  return false;
+}
 function isolate(window: BrowserWindow, allowedFiles = new Set<string>()) {
   window.setMenu(null);
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
@@ -96,7 +140,7 @@ function isolate(window: BrowserWindow, allowedFiles = new Set<string>()) {
   isolated.setPermissionCheckHandler(() => false);
   isolated.on('will-download', (event) => event.preventDefault());
   isolated.webRequest.onBeforeRequest((details, callback) =>
-    callback({ cancel: !details.url.startsWith('data:') && !allowedFiles.has(details.url) }),
+    callback({ cancel: !fileRequestAllowed(details.url, allowedFiles) }),
   );
 }
 function previewWindow(parent: BrowserWindow | null, javascript = false) {

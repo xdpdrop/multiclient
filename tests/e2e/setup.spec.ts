@@ -1,4 +1,5 @@
 import { test, expect, choose, recordErrors } from './fixtures';
+import { composerCenterDelta, EMPTY_COMPOSER_CENTER_TOLERANCE } from './layout';
 
 test('provider keyboard selection and model controls keep their layout and visibility', async ({
   desktop,
@@ -33,12 +34,13 @@ test('provider keyboard selection and model controls keep their layout and visib
     )
     .toBeGreaterThan(0);
   await expect(page.getByText('Explore a project', { exact: true })).toHaveCount(0);
+  const welcome = await page.getByRole('heading', { name: 'What’s next?' }).boundingBox();
   const composer = await page.locator('form').boundingBox();
   const main = await page.locator('main').boundingBox();
   expect(Math.abs(composer!.x + composer!.width / 2 - (main!.x + main!.width / 2))).toBeLessThan(2);
-  expect(Math.abs(composer!.y + composer!.height / 2 - (main!.y + main!.height / 2))).toBeLessThan(
-    100,
-  );
+  expect(composer!.y).toBeGreaterThan(welcome!.y);
+  expect(composer!.y + composer!.height).toBeLessThanOrEqual(main!.y + main!.height + 1);
+  expect(composerCenterDelta(composer!, main!)).toBeLessThan(EMPTY_COMPOSER_CENTER_TOLERANCE);
   await choose(page, 'Provider', 'Claude Code');
   await choose(page, 'Model', 'Claude Opus');
   await page.getByRole('combobox', { name: 'Model', exact: true }).click();

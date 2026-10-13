@@ -1,8 +1,10 @@
 const { readFile, writeFile, mkdir } = require('node:fs/promises');
 const { join } = require('node:path');
+const { ensureSpawnHelpersExecutable } = require('./native.cjs');
 
 module.exports = async ({ packager }) => {
   const root = packager.projectDir;
+  ensureSpawnHelpersExecutable(root);
   const lock = JSON.parse(await readFile(join(root, 'package-lock.json'), 'utf8'));
   const dependencies = Object.entries(lock.packages)
     .filter(([path, entry]) => path && !entry.dev)

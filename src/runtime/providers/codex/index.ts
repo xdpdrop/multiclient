@@ -7,8 +7,20 @@ import type { TurnStartParams } from './protocol/v2/TurnStartParams';
 import type { ReviewStartParams } from './protocol/v2/ReviewStartParams';
 import type { ModelOption } from '../../../shared/types';
 import { randomUUID } from 'node:crypto';
+import { realpath } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { parseCodexUsage } from './usage';
+
+/**
+ * Workspace root handed to the read-only tools process.
+ * POSIX getcwd() is symlink-resolved (/var -> /private/var on macOS), so the
+ * argument must be realpath'd or the tools process rejects it and exits 1.
+ * Windows reports the spawn path; realpath would expand 8.3 names such as
+ * RUNNER~1 and the same check would fail.
+ */
+export async function codexToolsRoot(cwd: string, platform = process.platform) {
+  return platform === 'win32' ? cwd : realpath(cwd);
+}
 
 export class CodexConnection implements ProviderConnection {
   capabilities = capabilities('codex');
@@ -102,6 +114,7 @@ export class CodexConnection implements ProviderConnection {
       Object.keys(config.mcp_servers ?? {}).map((name) => [name, { enabled: false }]),
     );
     const workspaceServer = `multiclient_workspace_${randomUUID().replaceAll('-', '')}`;
+    const workspace = await codexToolsRoot(this.context.cwd);
     const result = await this.rpc.request(nativeId ? 'thread/resume' : 'thread/start', {
       ...(nativeId ? { threadId: nativeId } : {}),
       cwd: this.context.cwd,
@@ -114,7 +127,7 @@ export class CodexConnection implements ProviderConnection {
           ...disabledMcp,
           [workspaceServer]: {
             command: process.execPath,
-            args: [join(dirname(this.context.bridgePath), 'workspace-tools.js'), this.context.cwd],
+            args: [join(dirname(this.context.bridgePath), 'workspace-tools.js'), workspace],
             env: { ELECTRON_RUN_AS_NODE: '1' },
             enabled: true,
             required: true,
