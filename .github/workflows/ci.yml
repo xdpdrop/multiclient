@@ -26,10 +26,25 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         run: node -e "const expected = 'v' + require('./package.json').version; if (process.env.GITHUB_REF_NAME !== expected) throw new Error('Tag must match package.json version (' + expected + ')');"
       - run: npm ci
+      - name: Install a window manager
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y openbox
       - run: npm run check
         if: runner.os != 'Linux'
-      - run: xvfb-run --auto-servernum npm run check
+      - name: Verify under a window manager
         if: runner.os == 'Linux'
+        run: |
+          # Xvfb alone does not implement EWMH, so BrowserWindow.maximize() never
+          # reports isMaximized(). Openbox does, and the title-bar test depends on it.
+          xvfb-run --auto-servernum --server-args="-screen 0 1600x1200x24" bash -c 'set -eu
+            openbox >/tmp/openbox.log 2>&1 &
+            for _ in $(seq 1 50); do
+              if pgrep -x openbox >/dev/null; then break; fi
+              sleep 0.1
+            done
+            pgrep -x openbox >/dev/null
+            npm run check
+          '
       - run: npm run pack
         if: runner.os != 'Windows'
       - name: Build Windows portable EXE
