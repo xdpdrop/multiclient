@@ -4,28 +4,27 @@
 
 # Multiclient
 
-**Codex · Claude Code · Cursor · API chat · local model servers — one Windows workspace.**
+Windows desktop app that runs Codex, Claude Code, and Cursor through their official CLIs, plus API chat and compatible local model servers (Ollama, LM Studio, and similar HTTPS or loopback endpoints).
 
-Multiclient is a local-first Windows desktop app. It connects to OpenAI Codex, Claude Code, and Cursor through their official CLIs, plus API chat and compatible local endpoints (for example Ollama or LM Studio), and keeps everyday conversations and project work in one place. Chats, settings, and attachments stay on your computer; there is no telemetry or cloud sync.
+Conversations, settings, and attachment copies stay on your machine under `%APPDATA%/multiclient`. There is no telemetry or cloud sync.
 
 ## Features
 
-- **Unified connections** — API keys, a compatible HTTPS or loopback endpoint, or an installed official CLI with its own sign-in flow.
-- **Organize chats** — search, pin, archive, tag, drafts, and branch without overwriting the original thread.
-- **Projects** — chat projects for grouped knowledge without a folder; folder projects for files, Git, worktrees, and a built-in terminal.
-- **Context you choose** — project instructions and notes, manual memory, web page capture, prompt templates, and side-by-side model comparison (API targets).
-- **Artifacts** — save answers as versioned documents or code, review changes, and export.
-- **Appearance** — light and dark themes plus optional image, GIF, or video backgrounds.
+- Connect via API keys, a compatible endpoint, or an installed CLI with its own sign-in.
+- Search, pin, archive, tag, and branch chats; drafts survive restarts.
+- Chat projects group knowledge without a folder; folder projects add files, Git, worktrees, and a terminal.
+- Attach project notes, memory, captured web pages, prompt templates, or compare two–three API models side by side.
+- Save replies as versioned artifacts; export when you need to.
+- Light/dark themes and optional image, GIF, or video backgrounds.
 
-Provider capabilities vary; some editing modes stay gated until certified. See the [user guide](docs/guide.md) and [provider compatibility](docs/provider-compatibility/README.md).
+Not every provider supports every input or editing mode. Details are in the [user guide](docs/guide.md) and [provider compatibility](docs/provider-compatibility/README.md).
 
 ## Install
 
-**Windows x64 · portable EXE · unsigned preview**
+Windows x64 portable `Multiclient.exe`.
 
-1. Download **Multiclient.exe** from [Releases](https://github.com/xdpdrop/multiclient/releases) when published, or from **Actions → Build and verify → Artifacts → Multiclient-Windows-x64** for development builds.
-2. Place the EXE anywhere and run it. Your profile stays in `%APPDATA%/multiclient` on the same machine when you replace the file.
-3. Windows may warn because the build is unsigned.
+1. Download from [Releases](https://github.com/xdpdrop/multiclient/releases), or from **Actions → Build and verify → Artifacts → Multiclient-Windows-x64** if you need a CI build.
+2. Put the file anywhere and run it. Updating the EXE on the same PC keeps your existing profile.
 
 ## Build from source
 
@@ -36,20 +35,20 @@ npm ci
 npm run dev
 ```
 
-- **Check (typecheck, unit tests, build, integration scripts, Playwright):** `npm run check`
-- **Windows portable EXE:** `npm run dist:win` → `release/Multiclient.exe`
+- `npm run check` — typecheck, unit tests, build, integration scripts, Playwright
+- `npm run dist:win` — writes `release/Multiclient.exe`
 
 ## Use
 
-1. Open **Settings & connections** and enable API chat, a local server preset, or an official CLI (install and sign in through the CLI if needed).
-2. Pick a model and start chatting. API chat does not require a project or CLI.
-3. **Add project → Chat project** groups conversations and reusable knowledge; **Folder project** adds filesystem and terminal tools.
-4. Use **Add context and tools** for knowledge, web sources, memory, templates, or compare models. Review selected context before sending.
+1. Open **Settings & connections** and enable API chat, a local server preset, or an official CLI.
+2. Choose a model and chat. API chat does not need a project or CLI.
+3. **Add project → Chat project** for grouped conversations; **Folder project** for filesystem and terminal tools.
+4. **Add context and tools** covers knowledge, web sources, memory, templates, and model compare. Check what is selected before you send.
 
-More detail: [user guide](docs/guide.md) · [architecture](docs/architecture/README.md) · [contributing](docs/contributing/README.md) · [security](SECURITY.md)
+[user guide](docs/guide.md) · [architecture](docs/architecture/README.md) · [contributing](docs/contributing/README.md) · [security](SECURITY.md)
 
 ## License
 
-Multiclient application source is **source-available** under the [Elastic License 2.0](LICENSE) (licensor: **xdpdrop**). It is **not** OSI-approved open source. Releases tagged before this license change remain under the MIT License. Dependencies keep their own licenses ([third-party notices](THIRD_PARTY_NOTICES.md)).
+Application source is [Elastic License 2.0](LICENSE) (licensor: xdpdrop). The repo is source-available and not OSI open source. Release tags made before this license change remain MIT. Dependency licenses are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
-Multiclient is independent of OpenAI, Anthropic, and Cursor. Provider accounts and subscriptions are separate; their credentials are managed by their official CLIs.
+Multiclient is not from OpenAI, Anthropic, or Cursor. Subscriptions and API keys are yours; CLIs keep their own credentials.

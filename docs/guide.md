@@ -2,7 +2,7 @@
 
 Multiclient keeps everyday AI chat and project work in one Windows desktop workspace. Conversations, drafts, settings and captured attachments stay in `%APPDATA%/multiclient`. Moving the portable EXE preserves that profile on the same computer; it does not move your profile or provider accounts to another computer.
 
-**Unsigned development preview, not a certified public beta.** Provider capabilities vary. Editing modes remain gated until the provider/version/platform permission checklist is complete. No general ChatGPT or Claude web-subscription API is included. See [provider compatibility](provider-compatibility/README.md) and the [implementation status](implementation-status.md).
+Provider capabilities vary. Editing modes remain gated until the provider/version/platform permission checklist is complete. No general ChatGPT or Claude web-subscription API is included. See [provider compatibility](provider-compatibility/README.md) and the [implementation status](implementation-status.md).
 
 ## Connect an AI provider
 
@@ -31,7 +31,7 @@ Use the paperclip, supported drag/drop or clipboard image paste to capture files
 - PDFs are limited to 100 pages and must be unlocked. Supported cloud models can receive the original document. Other connections receive explicitly labeled extracted text where available. Scanned PDFs without extractable text require native document vision.
 - Native Anthropic image/PDF input requires a recognized supported Claude Sonnet, Opus or Haiku model ID. Retired IDs and arbitrary custom names are excluded; PDF text extraction remains available. See the [documented model allowlist](provider-compatibility/README.md).
 - Selecting PDF pages sends extracted text from those pages only. It does not send the complete original PDF; pictures, layout and charts are not preserved by this route.
-- Office documents, arbitrary binary attachments, document OCR and automatic retrieval from a RAG knowledge base are not part of this preview. Project knowledge uses explicitly selected text snapshots.
+- Office documents, arbitrary binary attachments, document OCR and automatic retrieval from a RAG knowledge base are not supported. Project knowledge uses explicitly selected text snapshots.
 
 Model and depth menus support keyboard navigation. Discovered model lists are provider responses, not a guarantee that every listed model works with every input. Custom IDs remain available when model listing is unsupported.
 
@@ -57,7 +57,7 @@ Captured sources keep the URL, capture time and immutable text. Refresh by captu
 
 Selected sources work as explicit text context with API chat and reviewed CLI handoffs. Native provider search tools remain disabled. Closing the Web sources dialog or switching drafts cancels active capture; cancellation and restart never replay research requests automatically. Capture accepts public HTTPS hostnames on port 443 without embedded credentials. Each fetch times out after 15 seconds and a batch after 45 seconds. Search displays up to 10 results; queries support 600 characters and 75 words.
 
-Brave's [Search API FAQ](https://brave.com/search/api/) states that storing API results requires a plan explicitly granting storage rights. This preview saves independently fetched page snapshots rather than search-result records. Search access also grants no rights to third-party page content.
+Brave's [Search API FAQ](https://brave.com/search/api/) states that storing API results requires a plan explicitly granting storage rights. Multiclient saves independently fetched page snapshots rather than search-result records. Search access also grants no rights to third-party page content.
 
 ## Saved memory and organization
 
@@ -126,7 +126,7 @@ npm run pack
 
 Unit and contract tests do not call paid providers. Storage/history harnesses run under Electron's Node ABI and include migration/restart checks, immutable history, corruption/rollback cases, and a measured 10,000-message fixture. Playwright uses an isolated profile and deterministic providers/local endpoints. `MULTICLIENT_PACKAGED_PATH` can point Playwright at an unpacked app executable. Linux desktop tests need Xvfb or an active display.
 
-The complete source check passed typecheck, 232 unit/contract tests, all native integration/worker checks, and 42 desktop scenarios. The final Windows package passed every desktop scenario twice: 84 passes and two skips of the live Codex case, which remains unverified. Ten focused imports and five artifact workflows also passed, including CPU load during compression; the final portable launch/streaming/restart/exit check passed. An earlier package passed public-URL capture through the UI followed by local API submission. The rebuilt EXE is unsigned and its checksum is recorded in `release/SHA256SUMS.txt`. These checks do not establish live provider or Brave account certification. See [feature acceptance](features-acceptance.md), [implementation status](implementation-status.md) and the [import investigation](import-investigation.md) for evidence and causal limits.
+The complete source check passed typecheck, 232 unit/contract tests, all native integration/worker checks, and 42 desktop scenarios. The final Windows package passed every desktop scenario twice: 84 passes and two skips of the live Codex case, which remains unverified. Ten focused imports and five artifact workflows also passed, including CPU load during compression; the final portable launch/streaming/restart/exit check passed. An earlier package passed public-URL capture through the UI followed by local API submission. The release EXE checksum is recorded in `release/SHA256SUMS.txt`. These checks do not establish live provider or Brave account certification. See [feature acceptance](features-acceptance.md), [implementation status](implementation-status.md) and the [import investigation](import-investigation.md) for evidence and causal limits.
 
 Repeat the Windows packaged suite with fresh isolated profiles and no retries:
 
@@ -140,9 +140,9 @@ node scripts/test-portable.cjs
 
 ## Release prerequisites
 
-Before publishing a prerelease, run all deterministic checks and the packaged Windows smoke tests, review dependency notices, verify backup/restore with an existing profile, and record the exact supported provider versions. Finish the remaining live-account and permission certification before enabling public write modes. Signing credentials remain a separate prerequisite for a signed release; the present preview is unsigned.
+Before publishing a release, run all deterministic checks and the packaged Windows smoke tests, review dependency notices, verify backup/restore with an existing profile, and record the exact supported provider versions. Finish the remaining live-account and permission certification before enabling public write modes.
 
-The existing GitHub workflow produces Windows portable EXE artifacts and checksums. A matching `v` tag can publish a Release after CI checks; a hyphenated version creates a prerelease. CI never receives live provider accounts. Do not equate an artifact or green synthetic CI run with completed permission certification.
+The existing GitHub workflow produces Windows portable EXE artifacts and checksums. A matching `v` tag can publish a GitHub Release after CI checks. CI never receives live provider accounts. Do not equate an artifact or green synthetic CI run with completed permission certification.
 
 Use [the usability study](usability-study.md) to recruit and evaluate actual users. The repository supplies a protocol; it has not recruited testers or measured retention.
 
