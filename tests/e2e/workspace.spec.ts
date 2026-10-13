@@ -215,14 +215,18 @@ test('questions use native labelled choices and answers provide code copying', a
 }) => {
   const { page } = desktop;
   await choose(page, 'Provider', 'Local test provider');
-  await page.getByLabel('Message', { exact: true }).fill('[question] Choose a direction');
-  await page.getByRole('button', { name: 'Send message', exact: true }).click();
+  const message = page.getByLabel('Message', { exact: true });
+  // Enter calls the same send() path. Playwright's mouse click on this
+  // control stays in "performing click action" on Windows after the button
+  // is already visible, stable, and enabled.
+  await message.fill('[question] Choose a direction');
+  await message.press('Enter');
   await expect(page.getByRole('button', { name: 'Send answer' })).toBeDisabled();
   await page.getByRole('radio', { name: 'First', exact: true }).check();
   await page.getByRole('button', { name: 'Send answer' }).click();
   await expect(page.getByRole('button', { name: 'Stop response' })).toHaveCount(0);
-  await page.getByLabel('Message', { exact: true }).fill('[blocks] Return a code example');
-  await page.getByRole('button', { name: 'Send message', exact: true }).click();
+  await message.fill('[blocks] Return a code example');
+  await message.press('Enter');
   await expect(page.getByRole('button', { name: 'Copy code' })).toBeVisible();
   const previousClipboard = await desktop.app.evaluate(({ clipboard }) => clipboard.readText());
   try {
