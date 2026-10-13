@@ -7,6 +7,7 @@ import type { TurnStartParams } from './protocol/v2/TurnStartParams';
 import type { ReviewStartParams } from './protocol/v2/ReviewStartParams';
 import type { ModelOption } from '../../../shared/types';
 import { randomUUID } from 'node:crypto';
+import { realpath } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { parseCodexUsage } from './usage';
 
@@ -102,6 +103,8 @@ export class CodexConnection implements ProviderConnection {
       Object.keys(config.mcp_servers ?? {}).map((name) => [name, { enabled: false }]),
     );
     const workspaceServer = `multiclient_workspace_${randomUUID().replaceAll('-', '')}`;
+    // The provider process observes the symlink-resolved cwd (/var -> /private/var on macOS).
+    const workspace = await realpath(this.context.cwd);
     const result = await this.rpc.request(nativeId ? 'thread/resume' : 'thread/start', {
       ...(nativeId ? { threadId: nativeId } : {}),
       cwd: this.context.cwd,
@@ -114,7 +117,7 @@ export class CodexConnection implements ProviderConnection {
           ...disabledMcp,
           [workspaceServer]: {
             command: process.execPath,
-            args: [join(dirname(this.context.bridgePath), 'workspace-tools.js'), this.context.cwd],
+            args: [join(dirname(this.context.bridgePath), 'workspace-tools.js'), workspace],
             env: { ELECTRON_RUN_AS_NODE: '1' },
             enabled: true,
             required: true,

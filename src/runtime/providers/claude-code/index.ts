@@ -1,7 +1,8 @@
 import { createServer, type Server } from 'node:net';
 import { randomBytes, randomUUID } from 'node:crypto';
-import { mkdir, writeFile, rm, chmod } from 'node:fs/promises';
-import { join } from 'node:path';
+import { mkdir, writeFile, rm, chmod, lstat } from 'node:fs/promises';
+import { join, posix } from 'node:path';
+import { tmpdir } from 'node:os';
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import { NdjsonDecoder } from '../../transports/ndjson';
 import { launch, stopProcess } from '../process';
@@ -9,6 +10,39 @@ import { capabilities } from '../../../shared/defaults';
 import { assertSessionMode, isBypassMode, isCodeMode } from '../../../shared/modes';
 import { modelCatalog } from '../../../shared/models';
 import type { AdapterContext, ProviderConnection, StartTurnRequest } from '../contracts';
+
+/** Usable sockaddr_un.sun_path bytes, excluding the terminating NUL. */
+export function sunPathLimit(platform = process.platform) {
+  return platform === 'linux' ? 107 : 103;
+}
+
+/**
+ * Permission bridge endpoint. Windows keeps a named pipe. Unix uses a short
+ * hash under tmpdir/mc so GitHub's TMPDIR plus dataDir/bridges/<uuid> cannot
+ * exceed sun_path (104 bytes on macOS, including NUL).
+ */
+export function permissionBridgeEndpoint(platform = process.platform, root = tmpdir()) {
+  if (platform === 'win32') return `\\\\.\\pipe\\multiclient-${randomUUID()}`;
+  const socket = posix.join(root, 'mc', `${randomBytes(8).toString('hex')}.sock`);
+  const limit = sunPathLimit(platform);
+  const bytes = Buffer.byteLength(socket);
+  if (bytes > limit)
+    throw new Error(
+      `Permission bridge socket path is ${bytes} bytes and exceeds the ${limit}-byte sun_path limit.`,
+    );
+  return socket;
+}
+
+async function privateSocketDirectory() {
+  const directory = join(tmpdir(), 'mc');
+  await mkdir(directory, { recursive: true, mode: 0o700 });
+  const info = await lstat(directory);
+  if (!info.isDirectory() || info.isSymbolicLink())
+    throw new Error('Permission bridge socket directory must be a real directory.');
+  if (typeof process.getuid === 'function' && info.uid !== process.getuid())
+    throw new Error('Permission bridge socket directory is not owned by this user.');
+  if ((info.mode & 0o077) !== 0) await chmod(directory, 0o700);
+}
 
 export class ClaudeConnection implements ProviderConnection {
   capabilities = capabilities('claude-code');
@@ -24,12 +58,16 @@ export class ClaudeConnection implements ProviderConnection {
     return { nativeId };
   }
   private async bridge() {
+    if (this.server) {
+      const previous = this.server;
+      this.server = undefined;
+      previous.close();
+    }
+    if (this.socket && process.platform !== 'win32') await rm(this.socket, { force: true });
     this.dir = join(this.context.dataDir, 'bridges', randomUUID());
     await mkdir(this.dir, { recursive: true, mode: 0o700 });
-    this.socket =
-      process.platform === 'win32'
-        ? `\\\\.\\pipe\\multiclient-${randomUUID()}`
-        : join(this.dir, 'permission.sock');
+    if (process.platform !== 'win32') await privateSocketDirectory();
+    this.socket = permissionBridgeEndpoint();
     this.server = createServer((socket) => {
       const parser = new NdjsonDecoder(async (request) => {
         if (request.token !== this.token || this.context.signal.aborted) {
@@ -288,6 +326,9 @@ export class ClaudeConnection implements ProviderConnection {
   async close() {
     await this.cancelTurn();
     this.server?.close();
+    this.server = undefined;
+    if (this.socket && process.platform !== 'win32') await rm(this.socket, { force: true });
+    this.socket = '';
     if (this.dir) await rm(this.dir, { recursive: true, force: true });
   }
 }
