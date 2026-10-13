@@ -19,6 +19,31 @@ function sqlitePrebuildRelative(platform, arch, musl = false) {
   return path.join('prebuilds', `${osName}-${arch}.node`);
 }
 
+/**
+ * node-pty 1.1.0 publishes darwin prebuilds/spawn-helper as mode 0644.
+ * macOS pty.spawn posix_spawns that helper, and a non-executable file
+ * throws "posix_spawnp failed." Linux uses forkpty and does not need it.
+ * chmod here instead of rebuilding node-pty, which would require a compiler.
+ */
+function ensureSpawnHelpersExecutable(root) {
+  const base = path.join(root, 'node_modules', 'node-pty');
+  const helpers = [];
+  const walk = (directory) => {
+    if (!fs.existsSync(directory)) return;
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+      const full = path.join(directory, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (entry.name === 'spawn-helper') {
+        fs.chmodSync(full, 0o755);
+        helpers.push(full);
+      }
+    }
+  };
+  walk(path.join(base, 'prebuilds'));
+  walk(path.join(base, 'build'));
+  return helpers;
+}
+
 function assertSqlitePrebuild(root, platform = process.platform, arch = process.arch) {
   const musl =
     platform === 'linux' &&
@@ -38,6 +63,7 @@ async function main() {
   const electron = require('electron');
   const root = path.resolve(__dirname, '..');
   assertSqlitePrebuild(root);
+  ensureSpawnHelpersExecutable(root);
   const modules = modulesToRebuild();
   if (modules.length > 0) {
     const { rebuild } = await import('@electron/rebuild');
@@ -69,4 +95,9 @@ if (require.main === module) {
   });
 }
 
-module.exports = { modulesToRebuild, sqlitePrebuildRelative, assertSqlitePrebuild };
+module.exports = {
+  modulesToRebuild,
+  sqlitePrebuildRelative,
+  assertSqlitePrebuild,
+  ensureSpawnHelpersExecutable,
+};

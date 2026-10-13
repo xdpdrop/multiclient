@@ -29,15 +29,20 @@ it('matches a folder stored at the canonical path of a symlinked selection', asy
 
 it('matches the only folder whose leaf name survives an 8.3 or symlink rewrite', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'multiclient-project-leaf-'));
-  directories.push(directory);
+  const parent = await mkdtemp(join(tmpdir(), 'multiclient-project-alias-'));
+  directories.push(directory, parent);
   const leaf = basename(directory);
-  const stored = `C:\\Users\\runneradmin\\AppData\\Local\\Temp\\${leaf}`;
-  expect(await realpath(directory)).not.toBe(stored);
+  const alias = join(parent, leaf);
+  await symlink(directory, alias);
+  const canonical = await realpath(alias);
+  // Stored path shares the leaf and nothing else, the way an 8.3 parent
+  // (RUNNER~1) differs from the path the dialog returned.
+  const stored = join(parent, 'RUNNER~1', leaf);
+  expect(canonical).not.toBe(alias);
+  expect(canonical).not.toBe(stored);
+  expect(alias).not.toBe(stored);
   expect(
-    await addedProjectId(
-      [{ id: 'project-2', name: leaf, path: stored, kind: 'folder' }],
-      directory,
-    ),
+    await addedProjectId([{ id: 'project-2', name: leaf, path: stored, kind: 'folder' }], alias),
   ).toBe('project-2');
 });
 
