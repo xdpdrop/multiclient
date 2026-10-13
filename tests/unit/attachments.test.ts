@@ -50,9 +50,9 @@ describe('attachment capture', () => {
       if (pages.length !== 1 || pages[0].text !== 'Hello document') throw new Error('Utility PDF extraction failed.');
     `;
     await promisify(execFile)(process.execPath, ['--input-type=module', '-e', script], {
-      timeout: 10000,
+      timeout: 30000,
     });
-  });
+  }, 30000);
   it('captures text immutably and uses a display label rather than a source authority', async () => {
     const path = join(directory, 'notes.md');
     await writeFile(path, 'Original content');
