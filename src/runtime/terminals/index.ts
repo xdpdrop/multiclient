@@ -3,38 +3,61 @@ import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { childEnvironment, registerProcess, releaseProcess } from '../providers/process';
 import type { RuntimeEvent } from '../../shared/types';
+
+export type TerminalInput = 'interactive' | 'script';
+
+/** UTF-16LE base64, the form `powershell.exe -EncodedCommand` accepts. */
+export function windowsScriptArgs(command: string) {
+  return [
+    '-NoLogo',
+    '-NoProfile',
+    '-NonInteractive',
+    '-EncodedCommand',
+    Buffer.from(command, 'utf16le').toString('base64'),
+  ];
+}
+
+/** `script` is test-only. The app always opens an interactive shell. */
+export function terminalShell(input: TerminalInput = 'interactive', command = '') {
+  const script = input === 'script';
+  if (process.platform === 'win32') {
+    return {
+      file: join(
+        process.env.SystemRoot ?? 'C:\\Windows',
+        'System32',
+        'WindowsPowerShell',
+        'v1.0',
+        'powershell.exe',
+      ),
+      args: script ? windowsScriptArgs(command) : ['-NoLogo', '-NoProfile'],
+    };
+  }
+  if (process.platform === 'darwin') {
+    return { file: '/bin/zsh', args: script ? ['-f', '+o', 'zle'] : ['-f'] };
+  }
+  return {
+    file: '/bin/bash',
+    args: script ? ['--noprofile', '--norc', '--noediting'] : ['--noprofile', '--norc'],
+  };
+}
+
 export class Terminals {
   private terminals = new Map<string, { terminal: pty.IPty; workspaceId: string }>();
   constructor(private emit: (event: RuntimeEvent) => void) {}
-  open(cwd: string, workspaceId = '') {
+  open(cwd: string, workspaceId = '', input: TerminalInput = 'interactive', command = '') {
     if (this.terminals.size >= 8) throw new Error('Close a terminal before opening another.');
-    const shell =
-      process.platform === 'win32'
-        ? join(
-            process.env.SystemRoot ?? 'C:\\Windows',
-            'System32',
-            'WindowsPowerShell',
-            'v1.0',
-            'powershell.exe',
-          )
-        : process.platform === 'darwin'
-          ? '/bin/zsh'
-          : '/bin/bash';
-    const terminal = pty.spawn(
-      shell,
-      process.platform === 'win32'
-        ? ['-NoLogo', '-NoProfile']
-        : process.platform === 'darwin'
-          ? ['-f']
-          : ['--noprofile', '--norc'],
-      {
-        cwd,
-        cols: 100,
-        rows: 20,
-        name: 'xterm-256color',
-        env: { ...childEnvironment(), TERM: 'xterm-256color' } as Record<string, string>,
-      },
-    );
+    const shell = terminalShell(input, command);
+    const terminal = pty.spawn(shell.file, shell.args, {
+      cwd,
+      cols: 100,
+      rows: 20,
+      name: 'xterm-256color',
+      env: {
+        ...childEnvironment(),
+        TERM: 'xterm-256color',
+        ...(input === 'script' ? { PS1: '', PS2: '', PROMPT: '', RPROMPT: '' } : {}),
+      } as Record<string, string>,
+    });
     const id = randomUUID();
     this.terminals.set(id, { terminal, workspaceId });
     registerProcess(terminal.pid);

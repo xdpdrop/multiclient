@@ -3,6 +3,11 @@ const { join, resolve } = require('node:path');
 const { tmpdir } = require('node:os');
 const { spawn } = require('node:child_process');
 
+function smokeExitDetail(code, signal) {
+  if (code === null) return `signal ${signal ?? 'unknown'}`;
+  return String(code);
+}
+
 function pdf() {
   const stream = 'BT /F1 12 Tf 50 750 Td (Hello captured PDF) Tj ET';
   const objects = [
@@ -83,15 +88,20 @@ async function main() {
         windowsHide: true,
       });
       child.on('error', reject);
-      child.on('exit', (code) =>
-        code === 0 ? resolveRun() : reject(new Error(`Web worker smoke failed (${code}).`)),
+      child.on('exit', (code, signal) =>
+        code === 0
+          ? resolveRun()
+          : reject(new Error(`Web worker smoke failed (${smokeExitDetail(code, signal)}).`)),
       );
     });
   } finally {
     await rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
   }
 }
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});
+if (require.main === module) {
+  main().catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });
+}
+module.exports = { smokeExitDetail };

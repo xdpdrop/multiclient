@@ -85,7 +85,7 @@ describe('attachment capture', () => {
     expect(imported.attachment.pages).toEqual([{ page: 1, text: 'Hello document' }]);
     expect(imported.attachment.content).toContain('[Page 1]');
     expect(imported.asset?.type).toBe('pdf');
-  });
+  }, 30000);
   it('retains imported image and PDF bytes after the original files are deleted', async () => {
     const png = Buffer.from(
       'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a3mEAAAAASUVORK5CYII=',

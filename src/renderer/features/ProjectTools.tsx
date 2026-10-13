@@ -18,19 +18,27 @@ export function ProjectTools({
   const [instructions, setInstructions] = useState<{ path: string; content: string }[]>([]);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
+  const [promptReady, setPromptReady] = useState(false);
   useEffect(() => {
     let active = true;
+    setPromptReady(false);
     void Promise.all([
       window.desktop.projectDefaults(project.id),
       project.kind === 'folder' ? window.desktop.instructions(project.id) : Promise.resolve([]),
     ])
       .then(([defaults, files]) => {
-        if (active) {
-          setPrompt(defaults.text ?? '');
-          setInstructions(files);
-        }
+        if (!active) return;
+        // Playwright fill selects the current text, then insertText runs in a
+        // later turn. Hydrating an empty field in that gap moves the caret to
+        // the end, so the new text is appended to the saved prompt.
+        setPrompt(defaults.text ?? '');
+        setInstructions(files);
+        setPromptReady(true);
       })
-      .catch(report);
+      .catch((error) => {
+        if (active) setPromptReady(true);
+        report(error);
+      });
     return () => {
       active = false;
     };
@@ -46,13 +54,14 @@ export function ProjectTools({
         <textarea
           aria-label="Reusable starter prompt"
           value={prompt}
+          disabled={!promptReady}
           onChange={(e) => setPrompt(e.target.value)}
           rows={3}
         />
       </label>
       <button
         className="button"
-        disabled={busy}
+        disabled={busy || !promptReady}
         onClick={() => {
           setBusy(true);
           const defaults = {

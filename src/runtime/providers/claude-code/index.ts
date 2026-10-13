@@ -9,6 +9,7 @@ import { capabilities } from '../../../shared/defaults';
 import { assertSessionMode, isBypassMode, isCodeMode } from '../../../shared/modes';
 import { modelCatalog } from '../../../shared/models';
 import type { AdapterContext, ProviderConnection, StartTurnRequest } from '../contracts';
+import { permissionBridgeEndpoint, preparePermissionSocketDirectory } from '../permission-socket';
 
 export class ClaudeConnection implements ProviderConnection {
   capabilities = capabilities('claude-code');
@@ -24,12 +25,16 @@ export class ClaudeConnection implements ProviderConnection {
     return { nativeId };
   }
   private async bridge() {
+    if (this.server) {
+      const previous = this.server;
+      this.server = undefined;
+      previous.close();
+    }
+    if (this.socket && process.platform !== 'win32') await rm(this.socket, { force: true });
     this.dir = join(this.context.dataDir, 'bridges', randomUUID());
     await mkdir(this.dir, { recursive: true, mode: 0o700 });
-    this.socket =
-      process.platform === 'win32'
-        ? `\\\\.\\pipe\\multiclient-${randomUUID()}`
-        : join(this.dir, 'permission.sock');
+    this.socket = permissionBridgeEndpoint();
+    if (process.platform !== 'win32') await preparePermissionSocketDirectory(this.socket);
     this.server = createServer((socket) => {
       const parser = new NdjsonDecoder(async (request) => {
         if (request.token !== this.token || this.context.signal.aborted) {
@@ -288,6 +293,9 @@ export class ClaudeConnection implements ProviderConnection {
   async close() {
     await this.cancelTurn();
     this.server?.close();
+    this.server = undefined;
+    if (this.socket && process.platform !== 'win32') await rm(this.socket, { force: true });
+    this.socket = '';
     if (this.dir) await rm(this.dir, { recursive: true, force: true });
   }
 }
