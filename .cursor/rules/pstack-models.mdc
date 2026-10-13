@@ -1,0 +1,30 @@
+---
+description: pstack per-role model choices (overrides skill defaults)
+alwaysApply: true
+---
+# pstack model configuration. One line per role. Delete a line to fall back to the skill default.
+# `inherit-parent` or `auto` as a value: the role runs on the parent chat model (omit Task `model`). Alias entries in a panel list still count toward its fan-out.
+# budget: small (medium)
+# All roles use Grok. Trivial edits use composer-2.5. Code default is grok-4.7-medium. Escalation is grok-4.7-high. The single cheap diff reviewer (`interrogate reviewers`) is grok-4.7-low.
+# One agent per task. One try per rung, then step up: composer-2.5, then grok-4.7-medium, then grok-4.7-high. The reviewer rung is grok-4.7-low, one try.
+# Never use third-party models unless Marek explicitly approves that specific task.
+# No arena, swarm, or multi-model panels. Panel role lines below are a single model so a stray invocation does not fan out.
+# No fast mode. No extended context. Never use Fable models.
+trivial: composer-2.5
+feature, refactoring: grok-4.7-medium
+bug-fix: grok-4.7-medium
+perf-issue: grok-4.7-medium
+hillclimb: grok-4.7-medium
+judgment and prose: grok-4.7-medium
+hardest tasks: grok-4.7-high
+how explorer: grok-4.7-medium
+how explainer: grok-4.7-medium
+why investigators: grok-4.7-medium
+why synthesizer: grok-4.7-medium
+reflect tooling: grok-4.7-medium
+reflect judgment, divergent, synthesizer: grok-4.7-medium
+arena runners: grok-4.7-medium
+arena cross-judge pool: grok-4.7-low
+swarm workers: grok-4.7-medium
+architect runners: grok-4.7-medium
+interrogate reviewers: grok-4.7-low
