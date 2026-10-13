@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { terminalShell, Terminals } from '../../src/runtime/terminals';
+import { terminalShell, Terminals, windowsScriptArgs } from '../../src/runtime/terminals';
 
 const fixture = vi.hoisted(() => ({ terminals: [] as any[] }));
 vi.mock('node-pty', () => ({
@@ -47,13 +47,33 @@ describe('workspace terminal ownership', () => {
   });
 
   it('script mode uses the app shell with the line editor disabled', () => {
+    const command = 'echo hi';
     const terminals = new Terminals(() => {});
-    const shell = terminalShell('script');
-    terminals.open('/project', 'workspace', 'script');
+    const shell = terminalShell('script', command);
+    terminals.open('/project', 'workspace', 'script', command);
     expect(fixture.terminals[0].file).toBe(shell.file);
     expect(fixture.terminals[0].args).toEqual(shell.args);
     expect(fixture.terminals[0].cwd).toBe('/project');
     expect(terminalShell().args).not.toEqual(shell.args);
     terminals.closeAll();
+  });
+
+  it('round-trips a quoted non-ASCII Windows script through EncodedCommand', () => {
+    const command = `echo "say 'hi'"\r\nWrite-Output 'café 日本語'`;
+    const args = windowsScriptArgs(command);
+    expect(args.slice(0, 4)).toEqual([
+      '-NoLogo',
+      '-NoProfile',
+      '-NonInteractive',
+      '-EncodedCommand',
+    ]);
+    expect(Buffer.from(args[4], 'base64').toString('utf16le')).toBe(command);
+    if (process.platform === 'win32') {
+      const terminals = new Terminals(() => {});
+      terminals.open('C:\\project', 'workspace', 'script', command);
+      expect(fixture.terminals[0].args).toEqual(args);
+      expect(fixture.terminals[0].write).not.toHaveBeenCalled();
+      terminals.closeAll();
+    }
   });
 });

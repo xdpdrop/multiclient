@@ -61,8 +61,9 @@ async function runScript(cwd: string) {
   });
   const timer = setTimeout(() => resolveExit(-1), 15000);
   try {
-    const id = terminals.open(cwd, 'session', 'script');
-    terminals.write(id, script());
+    const text = script();
+    const id = terminals.open(cwd, 'session', 'script', text);
+    if (process.platform !== 'win32') terminals.write(id, text);
     const code = await exited;
     if (code !== 0) throw new Error(`exit ${code}\n${normalizeTerminalBuffer(output)}`);
     return output;

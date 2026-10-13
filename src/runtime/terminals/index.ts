@@ -6,8 +6,19 @@ import type { RuntimeEvent } from '../../shared/types';
 
 export type TerminalInput = 'interactive' | 'script';
 
+/** UTF-16LE base64, the form `powershell.exe -EncodedCommand` accepts. */
+export function windowsScriptArgs(command: string) {
+  return [
+    '-NoLogo',
+    '-NoProfile',
+    '-NonInteractive',
+    '-EncodedCommand',
+    Buffer.from(command, 'utf16le').toString('base64'),
+  ];
+}
+
 /** `script` is test-only. The app always opens an interactive shell. */
-export function terminalShell(input: TerminalInput = 'interactive') {
+export function terminalShell(input: TerminalInput = 'interactive', command = '') {
   const script = input === 'script';
   if (process.platform === 'win32') {
     return {
@@ -18,9 +29,7 @@ export function terminalShell(input: TerminalInput = 'interactive') {
         'v1.0',
         'powershell.exe',
       ),
-      args: script
-        ? ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', '-']
-        : ['-NoLogo', '-NoProfile'],
+      args: script ? windowsScriptArgs(command) : ['-NoLogo', '-NoProfile'],
     };
   }
   if (process.platform === 'darwin') {
@@ -35,9 +44,9 @@ export function terminalShell(input: TerminalInput = 'interactive') {
 export class Terminals {
   private terminals = new Map<string, { terminal: pty.IPty; workspaceId: string }>();
   constructor(private emit: (event: RuntimeEvent) => void) {}
-  open(cwd: string, workspaceId = '', input: TerminalInput = 'interactive') {
+  open(cwd: string, workspaceId = '', input: TerminalInput = 'interactive', command = '') {
     if (this.terminals.size >= 8) throw new Error('Close a terminal before opening another.');
-    const shell = terminalShell(input);
+    const shell = terminalShell(input, command);
     const terminal = pty.spawn(shell.file, shell.args, {
       cwd,
       cols: 100,
