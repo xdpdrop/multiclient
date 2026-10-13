@@ -7,6 +7,7 @@ export class WindowsJobSupervisor {
   constructor(
     private executable: string,
     private failed: () => void = () => {},
+    private closeGraceMs = 2000,
   ) {}
 
   async attach(pid: number): Promise<void> {
@@ -50,16 +51,20 @@ export class WindowsJobSupervisor {
   async close(): Promise<void> {
     this.stopping = true;
     const child = this.child;
-    if (!child || child.exitCode !== null) return;
+    if (!child || child.exitCode !== null || child.signalCode !== null) return;
     await new Promise<void>((resolve) => {
-      const timer = setTimeout(() => {
-        child.kill();
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(killTimer);
+        clearTimeout(giveUp);
         resolve();
-      }, 2000);
-      child.once('exit', () => {
-        clearTimeout(timer);
-        resolve();
-      });
+      };
+      const killTimer = setTimeout(() => child.kill(), this.closeGraceMs);
+      const giveUp = setTimeout(finish, this.closeGraceMs + 3000);
+      child.once('exit', finish);
+      child.stdin.on('error', () => {});
       child.stdin.end();
     });
   }
