@@ -8,6 +8,7 @@ import {
 import { mkdtemp, mkdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { addedProjectId } from './project-path';
 
 export type DesktopFixture = {
   app: ElectronApplication;
@@ -68,11 +69,8 @@ export const test = base.extend<{ desktop: DesktopFixture; developmentModes: boo
             .check();
           await dialog.getByRole('button', { name: 'Choose folder', exact: true }).click();
           await expect(dialog).toHaveCount(0);
-          const id = await page.evaluate(
-            async (selected) =>
-              (await window.desktop.snapshot()).projects.find(
-                (project) => project.path === selected,
-              )!.id,
+          const id = await addedProjectId(
+            await page.evaluate(async () => (await window.desktop.snapshot()).projects),
             path,
           );
           await page.evaluate((projectId) => window.desktop.trustProject(projectId, true), id);
