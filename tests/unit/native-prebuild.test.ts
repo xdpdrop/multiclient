@@ -49,7 +49,8 @@ it('marks node-pty spawn-helper executable without compiling it', async () => {
     writeFileSync(helper, '');
     chmodSync(helper, 0o644);
     expect(ensureSpawnHelpersExecutable(root)).toEqual([helper]);
-    expect(statSync(helper).mode & 0o777).toBe(0o755);
+    // Windows chmod only toggles read-only, so stat stays 0666 (438) after 0755.
+    if (process.platform !== 'win32') expect(statSync(helper).mode & 0o777).toBe(0o755);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
