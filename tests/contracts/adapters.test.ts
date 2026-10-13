@@ -1,7 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, readdir, rm, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { CodexConnection } from '../../src/runtime/providers/codex';
 import { ClaudeConnection } from '../../src/runtime/providers/claude-code';
 import { CursorConnection } from '../../src/runtime/providers/cursor';
@@ -160,6 +161,79 @@ describe('official protocol adapter boundaries (synthetic peers)', () => {
       });
     }
   }
+  it('claude-code listens when the data directory would overflow sun_path', async () => {
+    const parent = await mkdtemp(join(tmpdir(), 'multiclient-socket-'));
+    const dir = join(parent, 'd'.repeat(90));
+    await mkdir(dir, { recursive: true });
+    const legacy = join(dir, 'bridges', randomUUID(), 'permission.sock');
+    expect(Buffer.byteLength(legacy)).toBeGreaterThan(103);
+    const events: ProviderEvent[] = [];
+    const context: AdapterContext = {
+      cwd: dir,
+      dataDir: dir,
+      bridgePath: '',
+      executable: 'claude-code',
+      connection: connections.find((c) => c.id === 'claude-code')!,
+      signal: new AbortController().signal,
+      emit: (event) => events.push(event),
+      interact: async (request) => ({
+        id: 'fixture',
+        allow: true,
+        answers: Object.fromEntries((request.questions ?? []).map((q) => [q.id, 'Blue'])),
+      }),
+    };
+    const connection = new ClaudeConnection(context);
+    try {
+      await connection.openSession({});
+      await connection.startTurn({
+        text: 'Hello',
+        model: 'opus',
+        effort: 'max',
+        mode: 'ask',
+        history: [],
+      });
+      const [bridge] = await readdir(join(dir, 'bridges'));
+      const config = JSON.parse(await readFile(join(dir, 'bridges', bridge, 'mcp.json'), 'utf8'));
+      const socket = config.mcpServers.multiclient.env.MULTICLIENT_BRIDGE_SOCKET as string;
+      if (process.platform === 'win32') expect(socket).toMatch(/^\\\\\.\\pipe\\multiclient-/);
+      else {
+        const limit = process.platform === 'linux' ? 107 : 103;
+        expect(Buffer.byteLength(socket)).toBeLessThanOrEqual(limit);
+        expect(socket.includes('bridges')).toBe(false);
+      }
+      expect(events.some((event) => event.type === 'text' && event.text.includes('Hello'))).toBe(
+        true,
+      );
+    } finally {
+      await connection.close();
+      await rm(parent, { recursive: true, force: true });
+    }
+  });
+  it('codex accepts a workspace path whose symlink cwd differs from process.cwd()', async () => {
+    const real = await mkdtemp(join(tmpdir(), 'multiclient-codex-real-'));
+    const linkParent = await mkdtemp(join(tmpdir(), 'multiclient-codex-link-'));
+    const link = join(linkParent, 'workspace');
+    await symlink(real, link);
+    const context: AdapterContext = {
+      cwd: link,
+      dataDir: real,
+      bridgePath: '',
+      executable: 'codex',
+      connection: connections.find((c) => c.id === 'codex')!,
+      signal: new AbortController().signal,
+      emit: () => {},
+      interact: async () => ({ id: 'fixture', allow: true }),
+    };
+    const connection = new CodexConnection(context);
+    try {
+      await connection.initialize();
+      await expect(connection.openSession({})).resolves.toEqual({ nativeId: 'codex-native' });
+    } finally {
+      await connection.close();
+      await rm(linkParent, { recursive: true, force: true });
+      await rm(real, { recursive: true, force: true });
+    }
+  });
   it('Codex interrupts through the protocol and rejects the unfinished turn', async () => {
     const context: AdapterContext = {
       cwd: process.cwd(),
