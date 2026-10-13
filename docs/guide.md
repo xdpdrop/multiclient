@@ -146,4 +146,4 @@ The existing GitHub workflow produces Windows portable EXE artifacts and checksu
 
 Use [the usability study](usability-study.md) to recruit and evaluate actual users. The repository supplies a protocol; it has not recruited testers or measured retention.
 
-Multiclient is independent of OpenAI, Anthropic and Cursor. Application code is MIT licensed; provider accounts/software retain their own terms. See [security](../SECURITY.md), [architecture](architecture/README.md), and [contributing](contributing/README.md).
+Multiclient is independent of OpenAI, Anthropic and Cursor. Application code is under the Elastic License 2.0; provider accounts/software retain their own terms. See [security](../SECURITY.md), [architecture](architecture/README.md), and [contributing](contributing/README.md).

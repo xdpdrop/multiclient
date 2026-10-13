@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "description": "A local-first desktop client for your AI tools",
   "author": "Multiclient contributors",
-  "license": "MIT",
+  "license": "Elastic-2.0",
   "private": true,
   "main": "out/main/index.js",
   "scripts": {
