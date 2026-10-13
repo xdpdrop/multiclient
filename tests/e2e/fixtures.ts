@@ -5,10 +5,15 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test';
-import { mkdtemp, mkdir, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, realpath, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { addedProjectId } from './project-path';
+import {
+  normalizeTerminalBuffer,
+  terminalHasLine,
+  windowsShellPromptSeen,
+} from './terminal-buffer';
 
 export type DesktopFixture = {
   app: ElectronApplication;
@@ -126,12 +131,45 @@ export async function sendLocal(page: Page, text: string) {
   await expect(page.getByRole('button', { name: 'Stop response', exact: true })).toHaveCount(0);
 }
 
+function terminalOutput(page: Page, outputKey: string) {
+  return page.evaluate((key) => String((window as any)[key] ?? ''), outputKey);
+}
+
 export async function waitForShellPrompt(page: Page, outputKey: string, cwd: string) {
-  const output = () =>
-    page.evaluate(
-      (key) => String((window as any)[key] ?? '').replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, ''),
-      outputKey,
-    );
-  if (process.platform === 'win32') await expect.poll(output).toContain(`PS ${cwd}>`);
-  else await expect.poll(output).toMatch(/[$#>%]\s*$/);
+  if (process.platform === 'win32') {
+    let canonical = cwd;
+    try {
+      canonical = await realpath(cwd);
+    } catch {
+      canonical = cwd;
+    }
+    await expect
+      .poll(async () =>
+        windowsShellPromptSeen(await terminalOutput(page, outputKey), [cwd, canonical]),
+      )
+      .toBe(true);
+    return;
+  }
+  await expect
+    .poll(async () =>
+      /[$#>%]\s*$/.test(normalizeTerminalBuffer(await terminalOutput(page, outputKey))),
+    )
+    .toBe(true);
+}
+
+export async function submitShellLine(page: Page, command: string) {
+  await page.locator('.xterm-screen').click();
+  await page.keyboard.insertText(command);
+  await page.keyboard.press('Enter');
+}
+
+export async function waitForTerminalLine(
+  page: Page,
+  outputKey: string,
+  marker: string,
+  timeout = 15000,
+) {
+  await expect
+    .poll(async () => terminalHasLine(await terminalOutput(page, outputKey), marker), { timeout })
+    .toBe(true);
 }

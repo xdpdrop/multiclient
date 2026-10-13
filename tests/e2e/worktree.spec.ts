@@ -1,4 +1,11 @@
-import { test, expect, choose, waitForShellPrompt } from './fixtures';
+import {
+  test,
+  expect,
+  choose,
+  submitShellLine,
+  waitForShellPrompt,
+  waitForTerminalLine,
+} from './fixtures';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { childEnvironment, exec, findExecutable } from '../../src/runtime/providers/process';
@@ -62,16 +69,13 @@ test('managed worktrees isolate committed files, workspace previews and terminal
   await page.getByRole('button', { name: 'Toggle terminal' }).click();
   await expect(page.getByRole('status').filter({ hasText: 'Local shell' })).toBeVisible();
   await waitForShellPrompt(page, '__worktreeTerminalOutput', workspace.path);
-  await page.locator('.xterm-screen').click();
-  await page.keyboard.type(
+  await submitShellLine(
+    page,
     process.platform === 'win32'
       ? "Write-Output ('WORKTREE_MARKER_' + (Get-Content -LiteralPath './marker.txt'))"
       : 'printf "WORKTREE_MARKER_%s\\n" "$(cat ./marker.txt)"',
   );
-  await page.keyboard.press('Enter');
-  await expect
-    .poll(() => page.evaluate(() => (window as any).__worktreeTerminalOutput))
-    .toContain('WORKTREE_MARKER_Committed marker');
+  await waitForTerminalLine(page, '__worktreeTerminalOutput', 'WORKTREE_MARKER_Committed marker');
   await page.getByRole('button', { name: 'Close terminal', exact: true }).click();
   await choose(page, 'Workspace', 'Primary checkout');
   await page.getByLabel('Workspace tools', { exact: true }).click();

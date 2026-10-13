@@ -1,4 +1,11 @@
-import { test, expect, choose, waitForShellPrompt } from './fixtures';
+import {
+  test,
+  expect,
+  choose,
+  submitShellLine,
+  waitForShellPrompt,
+  waitForTerminalLine,
+} from './fixtures';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
@@ -162,13 +169,12 @@ test('hiding or navigating preserves a terminal, and unrelated trust changes do 
   await page.getByRole('button', { name: 'Toggle terminal' }).click();
   await expect(page.getByRole('status').filter({ hasText: 'Local shell' })).toBeVisible();
   await waitForShellPrompt(page, '__terminalOutput', join(desktop.data, 'first project'));
-  await page.locator('.xterm-screen').click();
-  await page.keyboard.type(
+  await submitShellLine(
+    page,
     process.platform === 'win32'
       ? "$env:MULTICLIENT_TERMINAL_FIXTURE='SAVED'"
       : 'export MULTICLIENT_TERMINAL_FIXTURE=SAVED',
   );
-  await page.keyboard.press('Enter');
   await page.getByRole('button', { name: 'Hide terminal' }).click();
   await choose(page, 'Current project', 'second project');
   await page.evaluate((id) => window.desktop.trustProject(id, false), second);
@@ -176,16 +182,13 @@ test('hiding or navigating preserves a terminal, and unrelated trust changes do 
   await page.getByLabel('Workspace tools', { exact: true }).click();
   await page.getByRole('button', { name: 'Toggle terminal' }).click();
   await expect(page.getByRole('status').filter({ hasText: 'Local shell' })).toBeVisible();
-  await page.locator('.xterm-screen').click();
-  await page.keyboard.type(
+  await submitShellLine(
+    page,
     process.platform === 'win32'
       ? "Write-Output ('TOKEN_' + $env:MULTICLIENT_TERMINAL_FIXTURE)"
       : 'printf "TOKEN_%s\\n" "$MULTICLIENT_TERMINAL_FIXTURE"',
   );
-  await page.keyboard.press('Enter');
-  await expect
-    .poll(() => page.evaluate(() => (window as any).__terminalOutput))
-    .toContain('TOKEN_SAVED');
+  await waitForTerminalLine(page, '__terminalOutput', 'TOKEN_SAVED');
   await desktop.app.evaluate(({ BrowserWindow }) =>
     BrowserWindow.getAllWindows()[0].webContents.send('multiclient:event', {
       type: 'runtime-state',

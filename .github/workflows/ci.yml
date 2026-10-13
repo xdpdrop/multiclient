@@ -25,7 +25,30 @@ jobs:
       - name: Check release version
         if: startsWith(github.ref, 'refs/tags/v')
         run: node -e "const expected = 'v' + require('./package.json').version; if (process.env.GITHUB_REF_NAME !== expected) throw new Error('Tag must match package.json version (' + expected + ')');"
-      - run: npm ci
+      - name: Cache Electron downloads
+        uses: actions/cache@v4
+        with:
+          # @electron/get via env-paths: ~/.cache/electron, ~/Library/Caches/electron,
+          # and %LOCALAPPDATA%\electron\Cache. A transient HTTP 500 leaves the zip here.
+          path: ${{ runner.os == 'Windows' && format('{0}\electron\Cache', env.LOCALAPPDATA) || (runner.os == 'macOS' && format('{0}/Library/Caches/electron', env.HOME) || format('{0}/.cache/electron', env.HOME)) }}
+          key: electron-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            electron-${{ runner.os }}-
+      - name: Install dependencies
+        shell: bash
+        run: |
+          set -eu
+          for attempt in 1 2 3; do
+            if npm ci; then
+              exit 0
+            fi
+            echo "npm ci failed on attempt ${attempt}"
+            if [ "$attempt" -eq 3 ]; then
+              exit 1
+            fi
+            rm -rf node_modules
+            sleep $((attempt * 5))
+          done
       - name: Configure Electron sandbox
         if: runner.os == 'Linux'
         run: |
