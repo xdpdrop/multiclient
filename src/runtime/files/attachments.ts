@@ -8,6 +8,44 @@ import type { Attachment } from '../../shared/types';
 export const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 export const MAX_ATTACHMENT_TEXT = 100000;
 export const MAX_PDF_PAGES = 100;
+export type PdfTextRun = {
+  str: string;
+  transform?: number[];
+  width?: number;
+  height?: number;
+  hasEOL?: boolean;
+};
+export function joinPdfText(items: readonly PdfTextRun[]) {
+  let text = '';
+  let previous: { x: number; y: number; width: number; height: number } | undefined;
+  for (const item of items) {
+    const value = item.str.normalize('NFKC');
+    const x = item.transform?.[4] ?? 0;
+    const y = item.transform?.[5] ?? 0;
+    const height = item.height || previous?.height || 12;
+    if (!value) {
+      if (item.hasEOL) {
+        text += '\n';
+        previous = undefined;
+      }
+      continue;
+    }
+    if (previous) {
+      const lineHeight = Math.max(previous.height, height, 1);
+      if (Math.abs(previous.y - y) > lineHeight * 0.5) text += '\n';
+      else if (x - (previous.x + previous.width) > lineHeight * 0.25) text += ' ';
+    }
+    text += value;
+    if (item.hasEOL) {
+      text += '\n';
+      previous = undefined;
+    } else previous = { x, y, width: item.width || value.length, height };
+  }
+  return text
+    .replace(/[^\S\n]+/g, ' ')
+    .replace(/ *\n */g, '\n')
+    .trim();
+}
 type ImportedAttachment = {
   attachment: Attachment;
   asset?: { id: string; mime: string; type: 'image' | 'pdf'; size: number; hash: string };
@@ -40,10 +78,7 @@ export async function extractPdf(bytes: Uint8Array) {
     for (let number = 1; number <= document.numPages; number++) {
       const page = await document.getPage(number);
       const value = await page.getTextContent();
-      const text = value.items
-        .map((item) => ('str' in item ? item.str + (item.hasEOL ? '\n' : ' ') : ''))
-        .join('')
-        .trim();
+      const text = joinPdfText(value.items.flatMap((item) => ('str' in item ? [item] : [])));
       length += text.length + 30;
       if (length > MAX_ATTACHMENT_TEXT)
         throw new Error('The PDF contains too much text. Split it into smaller documents.');
