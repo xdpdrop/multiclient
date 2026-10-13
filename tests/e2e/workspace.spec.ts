@@ -172,9 +172,7 @@ test('hiding or navigating preserves a terminal, and unrelated trust changes do 
   await submitShellLine(
     page,
     '__terminalOutput',
-    process.platform === 'win32'
-      ? "$env:MULTICLIENT_TERMINAL_FIXTURE='SAVED'"
-      : 'export MULTICLIENT_TERMINAL_FIXTURE=SAVED',
+    process.platform === 'win32' ? "$env:X='TOK'" : 'X=TOK',
   );
   await page.getByRole('button', { name: 'Hide terminal' }).click();
   await choose(page, 'Current project', 'second project');
@@ -186,9 +184,7 @@ test('hiding or navigating preserves a terminal, and unrelated trust changes do 
   await submitShellLine(
     page,
     '__terminalOutput',
-    process.platform === 'win32'
-      ? "Write-Output ('TOKEN_' + $env:MULTICLIENT_TERMINAL_FIXTURE)"
-      : 'printf "TOKEN_%s\\n" "$MULTICLIENT_TERMINAL_FIXTURE"',
+    process.platform === 'win32' ? "echo ($env:X+'EN_SAVED')" : 'echo "$X"EN_SAVED',
   );
   await waitForTerminalLine(page, '__terminalOutput', 'TOKEN_SAVED');
   await desktop.app.evaluate(({ BrowserWindow }) =>

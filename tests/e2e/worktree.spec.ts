@@ -72,11 +72,10 @@ test('managed worktrees isolate committed files, workspace previews and terminal
   await submitShellLine(
     page,
     '__worktreeTerminalOutput',
-    process.platform === 'win32'
-      ? "Write-Output ('WORKTREE_MARKER_' + (Get-Content -LiteralPath './marker.txt'))"
-      : 'printf "WORKTREE_MARKER_%s\\n" "$(cat ./marker.txt)"',
+    process.platform === 'win32' ? '$x=gc ./marker.txt' : 'x=$(cat ./marker.txt)',
   );
-  await waitForTerminalLine(page, '__worktreeTerminalOutput', 'WORKTREE_MARKER_Committed marker');
+  await submitShellLine(page, '__worktreeTerminalOutput', 'echo "WT_$x"');
+  await waitForTerminalLine(page, '__worktreeTerminalOutput', 'WT_Committed marker');
   await page.getByRole('button', { name: 'Close terminal', exact: true }).click();
   await choose(page, 'Workspace', 'Primary checkout');
   await page.getByLabel('Workspace tools', { exact: true }).click();
