@@ -26,6 +26,14 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         run: node -e "const expected = 'v' + require('./package.json').version; if (process.env.GITHUB_REF_NAME !== expected) throw new Error('Tag must match package.json version (' + expected + ')');"
       - run: npm ci
+      - name: Configure Electron sandbox
+        if: runner.os == 'Linux'
+        run: |
+          # Electron aborts unless chrome-sandbox is owned by root and mode 4755.
+          # This is CI setup only. The smoke script does not pass --no-sandbox.
+          sandbox="node_modules/electron/dist/chrome-sandbox"
+          sudo chown root:root "$sandbox"
+          sudo chmod 4755 "$sandbox"
       - run: npm run check
         if: runner.os != 'Linux'
       - run: xvfb-run --auto-servernum npm run check
