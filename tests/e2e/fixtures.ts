@@ -10,6 +10,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { addedProjectId } from './project-path';
 import {
+  commandOnCurrentPrompt,
   normalizeTerminalBuffer,
   terminalHasLine,
   windowsShellPromptSeen,
@@ -157,9 +158,16 @@ export async function waitForShellPrompt(page: Page, outputKey: string, cwd: str
     .toBe(true);
 }
 
-export async function submitShellLine(page: Page, command: string) {
+export async function submitShellLine(page: Page, outputKey: string, command: string) {
   await page.locator('.xterm-screen').click();
   await page.keyboard.insertText(command);
+  // Enter before ConPTY has echoed the paste submits an empty line and leaves
+  // the command on the next prompt. Wait until this prompt line shows it.
+  await expect
+    .poll(async () => commandOnCurrentPrompt(await terminalOutput(page, outputKey), command), {
+      timeout: 15000,
+    })
+    .toBe(true);
   await page.keyboard.press('Enter');
 }
 

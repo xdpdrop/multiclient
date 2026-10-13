@@ -1,5 +1,6 @@
 import { expect, it } from 'vitest';
 import {
+  commandOnCurrentPrompt,
   normalizeTerminalBuffer,
   terminalHasLine,
   windowsShellPromptSeen,
@@ -15,6 +16,17 @@ it('collapses ConPTY carriage-return redraws onto the output line', () => {
     'WORKTREE_MARKER_Committed marker\r\n';
   expect(normalizeTerminalBuffer(raw)).not.toContain('Get-CoWrite');
   expect(terminalHasLine(raw, 'WORKTREE_MARKER_Committed marker')).toBe(true);
+});
+
+it('sees a wrapped paste on the current prompt and not after the next prompt', () => {
+  const command = "Write-Output ('TOKEN_' + $env:MULTICLIENT_TERMINAL_FIXTURE)";
+  const wrapped =
+    'PS C:\\Users\\runneradmin\\AppData\\Local\\Temp\\first project> Write-Output\n' +
+    "(\n'TOKEN_'\n+\n$env:MULTICLIENT_TERMINAL_FIXTURE\n)";
+  expect(commandOnCurrentPrompt(wrapped, command)).toBe(true);
+  expect(commandOnCurrentPrompt(wrapped.slice(0, -8), command)).toBe(false);
+  const submitted = `${wrapped}\nTOKEN_SAVED\nPS C:\\Users\\runneradmin\\AppData\\Local\\Temp\\first project>`;
+  expect(commandOnCurrentPrompt(submitted, command)).toBe(false);
 });
 
 it('matches a PowerShell prompt on either the 8.3 path or the long path', () => {

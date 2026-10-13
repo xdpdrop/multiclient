@@ -171,6 +171,7 @@ test('hiding or navigating preserves a terminal, and unrelated trust changes do 
   await waitForShellPrompt(page, '__terminalOutput', join(desktop.data, 'first project'));
   await submitShellLine(
     page,
+    '__terminalOutput',
     process.platform === 'win32'
       ? "$env:MULTICLIENT_TERMINAL_FIXTURE='SAVED'"
       : 'export MULTICLIENT_TERMINAL_FIXTURE=SAVED',
@@ -184,6 +185,7 @@ test('hiding or navigating preserves a terminal, and unrelated trust changes do 
   await expect(page.getByRole('status').filter({ hasText: 'Local shell' })).toBeVisible();
   await submitShellLine(
     page,
+    '__terminalOutput',
     process.platform === 'win32'
       ? "Write-Output ('TOKEN_' + $env:MULTICLIENT_TERMINAL_FIXTURE)"
       : 'printf "TOKEN_%s\\n" "$MULTICLIENT_TERMINAL_FIXTURE"',

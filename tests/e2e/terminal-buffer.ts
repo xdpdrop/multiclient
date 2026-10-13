@@ -30,3 +30,13 @@ export function windowsShellPromptSeen(raw: string, paths: readonly string[]) {
   const text = normalizeTerminalBuffer(raw).toLowerCase();
   return paths.some((cwd) => cwd.length > 0 && text.includes(`ps ${cwd.toLowerCase()}>`));
 }
+
+/**
+ * The unsubmitted paste sits at the end of the buffer. ConPTY wraps that
+ * prompt line with newlines; drop all whitespace before comparing.
+ */
+export function commandOnCurrentPrompt(raw: string, command: string) {
+  const expected = command.replace(/\s+/g, '');
+  if (!expected) return false;
+  return normalizeTerminalBuffer(raw).replace(/\s+/g, '').endsWith(expected);
+}

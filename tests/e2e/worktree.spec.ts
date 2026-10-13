@@ -71,6 +71,7 @@ test('managed worktrees isolate committed files, workspace previews and terminal
   await waitForShellPrompt(page, '__worktreeTerminalOutput', workspace.path);
   await submitShellLine(
     page,
+    '__worktreeTerminalOutput',
     process.platform === 'win32'
       ? "Write-Output ('WORKTREE_MARKER_' + (Get-Content -LiteralPath './marker.txt'))"
       : 'printf "WORKTREE_MARKER_%s\\n" "$(cat ./marker.txt)"',
