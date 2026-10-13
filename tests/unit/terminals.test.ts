@@ -1,12 +1,15 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { Terminals } from '../../src/runtime/terminals';
+import { terminalShell, Terminals } from '../../src/runtime/terminals';
 
 const fixture = vi.hoisted(() => ({ terminals: [] as any[] }));
 vi.mock('node-pty', () => ({
-  spawn: () => {
+  spawn: (file: string, args: string[], options: { cwd?: string }) => {
     let exit = (_info: { exitCode: number }) => {};
     const terminal = {
       pid: 2000 + fixture.terminals.length,
+      file,
+      args,
+      cwd: options.cwd,
       kill: vi.fn(() => exit({ exitCode: 0 })),
       write: vi.fn(),
       resize: vi.fn(),
@@ -41,5 +44,16 @@ describe('workspace terminal ownership', () => {
     expect(() => terminals.write(second, 'closed')).toThrow(/closed/);
     terminals.closeAll();
     expect(fixture.terminals[0].kill).toHaveBeenCalledTimes(1);
+  });
+
+  it('script mode uses the app shell with the line editor disabled', () => {
+    const terminals = new Terminals(() => {});
+    const shell = terminalShell('script');
+    terminals.open('/project', 'workspace', 'script');
+    expect(fixture.terminals[0].file).toBe(shell.file);
+    expect(fixture.terminals[0].args).toEqual(shell.args);
+    expect(fixture.terminals[0].cwd).toBe('/project');
+    expect(terminalShell().args).not.toEqual(shell.args);
+    terminals.closeAll();
   });
 });

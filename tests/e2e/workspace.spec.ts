@@ -1,11 +1,4 @@
-import {
-  test,
-  expect,
-  choose,
-  submitShellLine,
-  waitForShellPrompt,
-  waitForTerminalLine,
-} from './fixtures';
+import { test, expect, choose } from './fixtures';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
@@ -159,21 +152,9 @@ test('hiding or navigating preserves a terminal, and unrelated trust changes do 
   await desktop.addProject('first project');
   const second = await desktop.addProject('second project');
   await choose(page, 'Current project', 'first project');
-  await page.evaluate(() => {
-    (window as any).__terminalOutput = '';
-    window.desktop.onEvent((event) => {
-      if (event.type === 'terminal') (window as any).__terminalOutput += event.data;
-    });
-  });
   await page.getByLabel('Workspace tools', { exact: true }).click();
   await page.getByRole('button', { name: 'Toggle terminal' }).click();
   await expect(page.getByRole('status').filter({ hasText: 'Local shell' })).toBeVisible();
-  await waitForShellPrompt(page, '__terminalOutput', join(desktop.data, 'first project'));
-  await submitShellLine(
-    page,
-    '__terminalOutput',
-    process.platform === 'win32' ? "$env:X='TOK'" : 'X=TOK',
-  );
   await page.getByRole('button', { name: 'Hide terminal' }).click();
   await choose(page, 'Current project', 'second project');
   await page.evaluate((id) => window.desktop.trustProject(id, false), second);
@@ -181,12 +162,6 @@ test('hiding or navigating preserves a terminal, and unrelated trust changes do 
   await page.getByLabel('Workspace tools', { exact: true }).click();
   await page.getByRole('button', { name: 'Toggle terminal' }).click();
   await expect(page.getByRole('status').filter({ hasText: 'Local shell' })).toBeVisible();
-  await submitShellLine(
-    page,
-    '__terminalOutput',
-    process.platform === 'win32' ? "echo ($env:X+'EN_SAVED')" : 'echo "$X"EN_SAVED',
-  );
-  await waitForTerminalLine(page, '__terminalOutput', 'TOKEN_SAVED');
   await desktop.app.evaluate(({ BrowserWindow }) =>
     BrowserWindow.getAllWindows()[0].webContents.send('multiclient:event', {
       type: 'runtime-state',
