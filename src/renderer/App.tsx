@@ -67,6 +67,7 @@ import type {
   Conversation,
 } from '../shared/types';
 import styles from './App.module.css';
+import { useNarrowViewport } from './narrow-layout';
 
 export function App() {
   const state = useApp();
@@ -169,7 +170,7 @@ export function App() {
   } | null>(null);
   const [reviewProvider, setReviewProvider] = useState<ProviderId>('codex');
   const [fileSelectorOpen, setFileSelectorOpen] = useState(false);
-  const [narrow, setNarrow] = useState(() => matchMedia('(max-width: 600px)').matches);
+  const narrow = useNarrowViewport();
   const [narrowSidebarOpen, setNarrowSidebarOpen] = useState(false);
   const sidebar = useRef<HTMLElement>(null);
   const sidebarToggle = useRef<HTMLButtonElement>(null);
@@ -216,14 +217,8 @@ export function App() {
     };
   }, [selectedId, latestUserMessageId]);
   useEffect(() => {
-    const media = matchMedia('(max-width: 600px)');
-    const update = () => {
-      setNarrow(media.matches);
-      setNarrowSidebarOpen(false);
-    };
-    media.addEventListener('change', update);
-    return () => media.removeEventListener('change', update);
-  }, []);
+    setNarrowSidebarOpen(false);
+  }, [narrow]);
   useEffect(() => {
     if (!narrow || !narrowSidebarOpen) return;
     sidebar.current?.querySelector<HTMLButtonElement>('button')?.focus();
