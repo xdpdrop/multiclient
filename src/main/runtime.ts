@@ -109,12 +109,30 @@ export class RuntimeHost extends EventEmitter {
             status: 'recovering',
             message: 'Recovering the local runtime. Interrupted operations will not be replayed.',
           });
-          try {
+          const startReplacement = async () => {
             await this.starting?.catch(() => {});
-            if (this.stopping || generation !== this.stopGeneration) return;
+            if (this.stopping || generation !== this.stopGeneration) return false;
             await this.start();
-          } catch {
-            this.failed();
+            return true;
+          };
+          try {
+            await startReplacement();
+          } catch (error) {
+            if (process.env.MULTICLIENT_TEST_MODE === '1')
+              console.error(
+                'Runtime recovery will retry:',
+                error instanceof Error ? error.message : error,
+              );
+            try {
+              if (!(await startReplacement())) return;
+            } catch (retryError) {
+              if (process.env.MULTICLIENT_TEST_MODE === '1')
+                console.error(
+                  'Runtime recovery failed:',
+                  retryError instanceof Error ? retryError.message : retryError,
+                );
+              this.failed();
+            }
           }
         } else this.failed();
       })();

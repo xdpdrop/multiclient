@@ -1,7 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { RuntimeHost } from '../../src/main/runtime';
 
-const fixture = vi.hoisted(() => ({ children: [] as any[], fatal: false }));
+const fixture = vi.hoisted(() => ({
+  children: [] as any[],
+  fatal: false,
+  startupFailures: 0,
+}));
 vi.mock('electron', async () => {
   const { EventEmitter } = await import('node:events');
   class Child extends EventEmitter {
@@ -17,12 +21,14 @@ vi.mock('electron', async () => {
     postMessage(message: any) {
       this.messages.push(message);
       if (message.type === 'init')
-        queueMicrotask(() =>
-          this.emit(
-            'message',
-            fixture.fatal ? { type: 'fatal', error: 'Fixture startup failed' } : { type: 'ready' },
-          ),
-        );
+        queueMicrotask(() => {
+          if (fixture.fatal)
+            this.emit('message', { type: 'fatal', error: 'Fixture startup failed' });
+          else if (fixture.startupFailures > 0) {
+            fixture.startupFailures -= 1;
+            this.emit('message', { type: 'fatal', error: 'database is locked' });
+          } else this.emit('message', { type: 'ready' });
+        });
       if (message.type === 'shutdown') queueMicrotask(() => this.kill());
     }
     kill() {
@@ -58,6 +64,7 @@ afterEach(async () => {
   host = undefined;
   fixture.children.length = 0;
   fixture.fatal = false;
+  fixture.startupFailures = 0;
 });
 
 describe('bounded runtime recovery', () => {
@@ -82,6 +89,17 @@ describe('bounded runtime recovery', () => {
     await expect(host.request('snapshot')).rejects.toThrow(/not ready/);
     await host.restart();
     expect(fixture.children.length).toBe(3);
+  });
+  it('retries a startup failure during the one automatic recovery', async () => {
+    host = new RuntimeHost({ dataDir: '', migrations: '', secret: async () => undefined });
+    const events: any[] = [];
+    host.on('event', (event) => events.push(event));
+    await host.start();
+    fixture.startupFailures = 1;
+    fixture.children[0].kill();
+    await expect.poll(() => fixture.children.length).toBe(3);
+    await expect.poll(() => events.at(-1)?.status).toBe('ready');
+    expect(events.map((event) => event.status)).toEqual(['ready', 'recovering', 'ready']);
   });
   it('does not restart after an intentional shutdown', async () => {
     host = new RuntimeHost({ dataDir: '', migrations: '', secret: async () => undefined });

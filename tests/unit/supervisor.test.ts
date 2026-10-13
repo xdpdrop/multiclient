@@ -44,6 +44,26 @@ async function tree() {
   }
 }
 
+describe('supervisor shutdown', () => {
+  it('does not finish closing until the owner process has exited', async () => {
+    const supervisor = new WindowsJobSupervisor(process.execPath, () => {}, 30);
+    const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], {
+      stdio: ['pipe', 'ignore', 'ignore'],
+    });
+    let exited = false;
+    child.once('exit', () => {
+      exited = true;
+    });
+    (supervisor as unknown as { child: ChildProcessWithoutNullStreams }).child = child;
+    try {
+      await supervisor.close();
+      expect(exited).toBe(true);
+    } finally {
+      if (!exited) child.kill();
+    }
+  });
+});
+
 describe.skipIf(process.platform !== 'win32')('Windows kill-on-close job supervision', () => {
   beforeAll(async () => {
     await exec(process.execPath, [resolve('scripts/build-supervisor.cjs')], { windowsHide: true });
