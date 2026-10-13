@@ -12,7 +12,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { artifactTabForKey, ArtifactEditorTabs } from '../../src/renderer/features/Artifacts';
+import {
+  artifactTabForKey,
+  ArtifactEditorTabs,
+  revisionAfterKey,
+} from '../../src/renderer/features/Artifacts';
 import {
   artifactSource,
   validateExportedArtifacts,
@@ -89,6 +93,11 @@ it('provides labelled manual-activation Source and Preview tabs with arrow/Home/
   expect(artifactTabForKey('source', 'End')).toBe('preview');
   expect(artifactTabForKey('preview', 'Home')).toBe('source');
   expect(artifactTabForKey('source', 'Enter')).toBeUndefined();
+  const revisions = [{ id: 'newer' }, { id: 'older' }];
+  expect(revisionAfterKey(revisions, 'newer', 'ArrowDown')).toBe('older');
+  expect(revisionAfterKey(revisions, 'older', 'ArrowUp')).toBe('newer');
+  expect(revisionAfterKey(revisions, 'older', 'ArrowDown')).toBeUndefined();
+  expect(revisionAfterKey(revisions, 'newer', 'Enter')).toBeUndefined();
   const html = renderToStaticMarkup(
     createElement(ArtifactEditorTabs, { tab: 'source', id: 'editor', onChange: () => {} }),
   );

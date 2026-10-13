@@ -17,6 +17,16 @@ export function artifactTabForKey(tab: ArtifactTab, key: string): ArtifactTab | 
   if (key === 'End') return 'preview';
   if (key === 'ArrowLeft' || key === 'ArrowRight') return tab === 'source' ? 'preview' : 'source';
 }
+export function revisionAfterKey(
+  revisions: readonly { id: string }[],
+  currentId: string,
+  key: string,
+) {
+  if (key !== 'ArrowDown' && key !== 'ArrowUp') return undefined;
+  const index = revisions.findIndex((revision) => revision.id === currentId);
+  if (index < 0) return undefined;
+  return revisions[index + (key === 'ArrowDown' ? 1 : -1)]?.id;
+}
 export function ArtifactEditorTabs({
   tab,
   onChange,
@@ -448,6 +458,12 @@ export function Artifacts({
                   aria-label="Artifact revision"
                   value={revisionId}
                   onChange={(e) => setRevisionId(e.target.value)}
+                  onKeyDown={(event) => {
+                    const next = revisionAfterKey(view.revisions, revisionId, event.key);
+                    if (!next) return;
+                    event.preventDefault();
+                    setRevisionId(next);
+                  }}
                 >
                   {view.revisions.map((r) => (
                     <option key={r.id} value={r.id}>

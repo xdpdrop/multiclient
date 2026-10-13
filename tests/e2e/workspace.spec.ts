@@ -226,8 +226,14 @@ test('questions use native labelled choices and answers provide code copying', a
   await expect(page.getByRole('button', { name: 'Copy code' })).toBeVisible();
   const previousClipboard = await desktop.app.evaluate(({ clipboard }) => clipboard.readText());
   try {
-    await page.getByRole('button', { name: 'Copy code' }).click();
-    await expect(page.getByRole('status').filter({ hasText: 'Copied' })).toBeVisible();
+    // A snapshot refresh can remount the code block just as the click lands,
+    // dropping the copied flag. Retry until the settled block reports it.
+    await expect(async () => {
+      await page.getByRole('button', { name: 'Copy code' }).click();
+      await expect(page.getByRole('status').filter({ hasText: 'Copied' })).toBeVisible({
+        timeout: 1000,
+      });
+    }).toPass({ timeout: 8000 });
     expect(await desktop.app.evaluate(({ clipboard }) => clipboard.readText())).toBe(
       'const ok = true;\n',
     );
