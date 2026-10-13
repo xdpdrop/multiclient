@@ -48,8 +48,10 @@ describe('supervisor shutdown', () => {
   it('does not finish closing until the owner process has exited', async () => {
     const supervisor = new WindowsJobSupervisor(process.execPath, () => {}, 30);
     const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], {
-      stdio: ['pipe', 'ignore', 'ignore'],
+      stdio: ['pipe', 'pipe', 'pipe'],
     });
+    child.stdout.resume();
+    child.stderr.resume();
     let exited = false;
     child.once('exit', () => {
       exited = true;
