@@ -103,8 +103,10 @@ export class CodexConnection implements ProviderConnection {
       Object.keys(config.mcp_servers ?? {}).map((name) => [name, { enabled: false }]),
     );
     const workspaceServer = `multiclient_workspace_${randomUUID().replaceAll('-', '')}`;
-    // The provider process observes the symlink-resolved cwd (/var -> /private/var on macOS).
-    const workspace = await realpath(this.context.cwd);
+    // POSIX getcwd() is symlink-resolved (/var -> /private/var on macOS). Windows reports the
+    // spawn path, so realpath would expand 8.3 temp names and fail the tools-root check.
+    const workspace =
+      process.platform === 'win32' ? this.context.cwd : await realpath(this.context.cwd);
     const result = await this.rpc.request(nativeId ? 'thread/resume' : 'thread/start', {
       ...(nativeId ? { threadId: nativeId } : {}),
       cwd: this.context.cwd,
