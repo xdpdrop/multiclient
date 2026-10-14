@@ -121,24 +121,74 @@ jobs:
         with:
           name: test-results-${{ matrix.os }}
           path: test-results
+  # Branch pushes, pull requests, and workflow_dispatch do not match, so this job
+  # is skipped. on: push has no branch filter, so a v* tag push still starts the
+  # workflow and then runs this job after verify. The tag must already exist;
+  # this job does not create one.
   release:
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    if: success() && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     needs: verify
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
+    timeout-minutes: 30
     permissions:
       contents: write
+    env:
+      ELECTRON_BUILDER_COMPRESSION_LEVEL: '5'
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          name: Multiclient-Windows-x64
-          path: release
-      - name: Publish downloadable release
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          RELEASE_TAG: ${{ github.ref_name }}
+          node-version: 24
+          cache: npm
+      - name: Cache Electron downloads
+        uses: actions/cache@v4
+        with:
+          path: ${{ format('{0}\electron\Cache', env.LOCALAPPDATA) }}
+          key: electron-Windows-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            electron-Windows-
+      - name: Install dependencies
         shell: bash
         run: |
-          # This workflow produces unsigned builds, so every downloadable build is a preview.
-          args=(--verify-tag --title "Multiclient $RELEASE_TAG preview" --generate-notes --prerelease)
-          gh release create "$RELEASE_TAG" release/Multiclient.exe release/SHA256SUMS.txt "${args[@]}" --notes "Windows x64 portable preview. Download Multiclient.exe and run it; no installer is needed. This build is unsigned. Connect an official CLI subscription, an API key, or a separately installed compatible local server. Public execution modes remain gated pending certification."
+          set -eu
+          for attempt in 1 2 3; do
+            if npm ci; then
+              exit 0
+            fi
+            echo "npm ci failed on attempt ${attempt}"
+            if [ "$attempt" -eq 3 ]; then
+              exit 1
+            fi
+            rm -rf node_modules
+            sleep $((attempt * 5))
+          done
+      - name: Build
+        run: npm run build
+      - name: Package Windows portable EXE
+        run: npx electron-builder --win portable --x64 --publish never
+      - name: Create release checksum
+        shell: pwsh
+        run: |
+          $hash = (Get-FileHash -LiteralPath release/Multiclient.exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  Multiclient.exe" | Set-Content -LiteralPath release/SHA256SUMS.txt -Encoding ascii
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Multiclient ${{ github.ref_name }} preview
+          prerelease: true
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: |
+            release/Multiclient.exe
+            release/SHA256SUMS.txt
+          body: |
+            Windows x64 portable preview. Download Multiclient.exe and SHA256SUMS.txt. Run the EXE directly; an installer is not required.
+
+            Verify the download in PowerShell:
+
+            ```powershell
+            Get-FileHash .\Multiclient.exe -Algorithm SHA256
+            ```
+
+            The hash should match the first field of SHA256SUMS.txt from this release. Connect an official CLI subscription, an API key, or a separately installed compatible local server. Public execution modes remain gated pending certification.
