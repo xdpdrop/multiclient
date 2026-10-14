@@ -7,11 +7,27 @@ import type { RuntimeEvent } from '../../shared/types';
 export type TerminalInput = 'interactive' | 'script';
 
 /**
- * OS ConPTY on Server 2025 prints a startup frame and does not run a headless
- * client. Device-attribute replies left that frame unchanged, and `cmd /c`
- * stopped on cmd's own frame. Script mode uses the ConPTY host shipped with
- * node-pty. Interactive shells stay on the system ConPTY.
+ * OS ConPTY swallows the device-attributes query and waits. node-pty's
+ * conpty.dll forwards `ESC [ c` (run 38561500341, 101 bytes) and still waits
+ * for the reply xterm would send. Script mode uses that DLL and answers.
+ * Interactive shells stay on the system ConPTY.
  */
+export function conptyScriptReply(data: string) {
+  let reply = '';
+  if (/\x1b\[0?c/.test(data)) reply += '\x1b[?1;2c';
+  if (/\x1b\[>0?c/.test(data)) reply += '\x1b[>0;276;0c';
+  if (data.includes('\x1b[6n')) reply += '\x1b[1;1R';
+  if (data.includes('\x1b[5n')) reply += '\x1b[0n';
+  return reply;
+}
+
+function splitTrailingCsi(data: string) {
+  const match = /\x1b\[[0-9;?]*$/.exec(data);
+  if (!match) return { complete: data, held: '' };
+  return { complete: data.slice(0, match.index), held: match[0] };
+}
+
+/** UTF-16LE base64, the form `powershell.exe -EncodedCommand` accepts. */
 export function windowsScriptArgs(command: string) {
   return [
     '-NoLogo',
@@ -68,6 +84,8 @@ export class Terminals {
     this.terminals.set(id, { terminal, workspaceId });
     registerProcess(terminal.pid);
     let buffer = '';
+    let held = '';
+    const answerConpty = input === 'script' && process.platform === 'win32';
     let timer: NodeJS.Timeout | undefined;
     const flush = () => {
       if (buffer) {
@@ -77,6 +95,12 @@ export class Terminals {
       timer = undefined;
     };
     terminal.onData((data) => {
+      if (answerConpty) {
+        const split = splitTrailingCsi(held + data);
+        held = split.held;
+        const reply = conptyScriptReply(split.complete);
+        if (reply) terminal.write(reply);
+      }
       buffer += data;
       if (buffer.length > 1024 * 1024) {
         terminal.kill();

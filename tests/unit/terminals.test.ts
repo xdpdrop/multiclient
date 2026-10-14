@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { terminalShell, Terminals, windowsScriptArgs } from '../../src/runtime/terminals';
+import {
+  conptyScriptReply,
+  terminalShell,
+  Terminals,
+  windowsScriptArgs,
+} from '../../src/runtime/terminals';
 
 const fixture = vi.hoisted(() => ({ terminals: [] as any[] }));
 vi.mock('node-pty', () => ({
@@ -14,7 +19,10 @@ vi.mock('node-pty', () => ({
       kill: vi.fn(() => exit({ exitCode: 0 })),
       write: vi.fn(),
       resize: vi.fn(),
-      onData() {},
+      emitData: (_data: string) => {},
+      onData(callback: (data: string) => void) {
+        terminal.emitData = callback;
+      },
       onExit: (callback: typeof exit) => {
         exit = callback;
       },
@@ -83,6 +91,31 @@ describe('workspace terminal ownership', () => {
       expect(fixture.terminals[1].options.useConptyDll).toBeUndefined();
       expect(fixture.terminals[1].write).not.toHaveBeenCalled();
       expect(terminalShell().args).toEqual(['-NoLogo', '-NoProfile']);
+      terminals.closeAll();
+    } finally {
+      Object.defineProperty(process, 'platform', { value: original, configurable: true });
+    }
+  });
+
+  it('answers the forwarded device-attributes query only for Windows script mode', () => {
+    const frame = '\x1b[1t\x1b[c\x1b[?1004h\x1b[?9001h';
+    expect(conptyScriptReply(frame)).toBe('\x1b[?1;2c');
+    expect(conptyScriptReply('\x1b[?1;2c')).toBe('');
+    expect(conptyScriptReply('\x1b[6n')).toBe('\x1b[1;1R');
+    const original = process.platform;
+    Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+    try {
+      const terminals = new Terminals(() => {});
+      terminals.open('C:\\project', 'workspace', 'script', 'echo hi');
+      terminals.open('C:\\project', 'workspace');
+      const scripted = fixture.terminals[0];
+      const interactive = fixture.terminals[1];
+      scripted.emitData('\x1b[1');
+      expect(scripted.write).not.toHaveBeenCalled();
+      scripted.emitData('t\x1b[c\x1b[?9001h');
+      expect(scripted.write).toHaveBeenCalledWith('\x1b[?1;2c');
+      interactive.emitData(frame);
+      expect(interactive.write).not.toHaveBeenCalled();
       terminals.closeAll();
     } finally {
       Object.defineProperty(process, 'platform', { value: original, configurable: true });
