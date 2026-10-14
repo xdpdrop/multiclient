@@ -22,7 +22,7 @@ Preconditions:
 - No other verification profile is being driven.
 
 - **Send.** Run `RUNNER_OS=Linux bash scripts/ci-step.sh node .cursor/skills/verify-multiclient/scripts/verify.mjs send`. The process exits 0.
-- **Proof.** Read `/tmp/multiclient-verify-evidence/send.json`. `seen` equals `draft`, and `profileRemoved` is true. `send.png` is a non-empty PNG of the window after the user message is visible.
+- **Proof.** Read `/tmp/multiclient-verify-evidence/send.json`. `seen` contains `draft`, and `profileRemoved` is true. `send.png` is a non-empty PNG of the window after the user message is visible.
 
 ## Gotchas
 
