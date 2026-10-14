@@ -1,24 +1,75 @@
 import * as pty from 'node-pty';
 import { randomUUID } from 'node:crypto';
+import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { childEnvironment, registerProcess, releaseProcess } from '../providers/process';
 import type { RuntimeEvent } from '../../shared/types';
 
 export type TerminalInput = 'interactive' | 'script';
 
+const nodeFs = createRequire(import.meta.url)('node:fs') as typeof import('node:fs');
+
 /**
- * OS ConPTY swallows the device-attributes query and waits. node-pty's
- * conpty.dll forwards `ESC [ c` (run 38561500341, 101 bytes) and still waits
- * for the reply xterm would send. Script mode uses that DLL and answers.
- * Interactive shells stay on the system ConPTY.
+ * Primary DA1 report that Windows Terminal sends. conpty.dll 1.23 forwards
+ * `ESC [ c` and waits in `WaitUntilDA1` before the client runs. Writing
+ * xterm's `ESC [ ? 1 ; 2 c` after that frame was already visible left the
+ * client unstarted (run 38565282843, 101 bytes, exit -1). The first parameter
+ * is the VT220 conformance level the host records.
  */
+export const CONPTY_PRIMARY_DA = '\x1b[?61;4;6;7;14;21;22;23;24;28;32;42c';
+
 export function conptyScriptReply(data: string) {
   let reply = '';
-  if (/\x1b\[0?c/.test(data)) reply += '\x1b[?1;2c';
+  if (/\x1b\[0?c/.test(data)) reply += CONPTY_PRIMARY_DA;
   if (/\x1b\[>0?c/.test(data)) reply += '\x1b[>0;276;0c';
   if (data.includes('\x1b[6n')) reply += '\x1b[1;1R';
   if (data.includes('\x1b[5n')) reply += '\x1b[0n';
   return reply;
+}
+
+function isConptyInputPipe(path: Parameters<typeof nodeFs.openSync>[0], flags: unknown) {
+  const mode = typeof flags === 'string' ? flags : '';
+  if (mode !== 'w' && mode !== 'w+') return false;
+  return /(?:^|[\\/])conpty-[^\\/]+-in$/i.test(String(path));
+}
+
+/**
+ * node-pty opens `\\.\pipe\conpty-*-in` before `ConnectNamedPipe` and
+ * `CreateProcess`. Queue the DA1 report on that fd so the write can land
+ * while connect is still inside the native call. Retries cover
+ * ERROR_PIPE_LISTENING; one success is enough.
+ */
+function writeWhenPipeConnects(fd: number, data: Buffer, onExhausted: () => void) {
+  const attempt = (remaining: number) => {
+    nodeFs.write(fd, data, (error) => {
+      if (!error) return;
+      if (remaining > 0) attempt(remaining - 1);
+      else onExhausted();
+    });
+  };
+  attempt(40);
+}
+
+/** Patch the shared `fs` module node-pty uses, only for the duration of `spawn`. */
+export function withConptyInputPrefill<T>(
+  spawn: () => T,
+  hooks?: { onPrefill?: () => void; onExhausted?: () => void },
+): T {
+  const original = nodeFs.openSync;
+  const report = Buffer.from(CONPTY_PRIMARY_DA, 'utf8');
+  nodeFs.openSync = ((path, flags, mode) => {
+    const fd = original(path, flags, mode);
+    if (isConptyInputPipe(path, flags)) {
+      hooks?.onPrefill?.();
+      writeWhenPipeConnects(fd, report, () => hooks?.onExhausted?.());
+    }
+    return fd;
+  }) as typeof nodeFs.openSync;
+  try {
+    return spawn();
+  } finally {
+    nodeFs.openSync = original;
+  }
 }
 
 function splitTrailingCsi(data: string) {
@@ -81,24 +132,41 @@ export class Terminals {
   open(cwd: string, workspaceId = '', input: TerminalInput = 'interactive', command = '') {
     if (this.terminals.size >= 8) throw new Error('Close a terminal before opening another.');
     const shell = terminalShell(input, command);
-    const terminal = pty.spawn(shell.file, shell.args, {
-      cwd,
-      cols: 100,
-      rows: 20,
-      name: 'xterm-256color',
-      env: {
-        ...childEnvironment(),
-        TERM: 'xterm-256color',
-        ...(input === 'script' ? { PS1: '', PS2: '', PROMPT: '', RPROMPT: '' } : {}),
-      } as Record<string, string>,
-      ...(process.platform === 'win32' && input === 'script' ? { useConptyDll: true } : {}),
-    });
+    const answerConpty = input === 'script' && process.platform === 'win32';
+    let prefilled = false;
+    let exhausted = false;
+    let spawned: pty.IPty | undefined;
+    const spawn = () =>
+      pty.spawn(shell.file, shell.args, {
+        cwd,
+        cols: 100,
+        rows: 20,
+        name: 'xterm-256color',
+        env: {
+          ...childEnvironment(),
+          TERM: 'xterm-256color',
+          ...(input === 'script' ? { PS1: '', PS2: '', PROMPT: '', RPROMPT: '' } : {}),
+        } as Record<string, string>,
+        ...(answerConpty ? { useConptyDll: true } : {}),
+      });
+    const terminal = answerConpty
+      ? withConptyInputPrefill(spawn, {
+          onPrefill: () => {
+            prefilled = true;
+          },
+          onExhausted: () => {
+            if (spawned) writePtyInput(spawned, CONPTY_PRIMARY_DA);
+            else exhausted = true;
+          },
+        })
+      : spawn();
+    spawned = terminal;
+    if (answerConpty && (!prefilled || exhausted)) writePtyInput(terminal, CONPTY_PRIMARY_DA);
     const id = randomUUID();
     this.terminals.set(id, { terminal, workspaceId });
     registerProcess(terminal.pid);
     let buffer = '';
     let held = '';
-    const answerConpty = input === 'script' && process.platform === 'win32';
     let timer: NodeJS.Timeout | undefined;
     const flush = () => {
       if (buffer) {
@@ -111,7 +179,7 @@ export class Terminals {
       if (answerConpty) {
         const split = splitTrailingCsi(held + data);
         held = split.held;
-        const reply = conptyScriptReply(split.complete);
+        const reply = conptyScriptReply(split.complete).replaceAll(CONPTY_PRIMARY_DA, '');
         if (reply) writePtyInput(terminal, reply);
       }
       buffer += data;
