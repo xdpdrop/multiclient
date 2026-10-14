@@ -19,6 +19,18 @@ Conversations, settings, and attachment copies stay on your machine under `%APPD
 
 Not every provider supports every input or editing mode. Details are in the [user guide](docs/guide.md) and [provider compatibility](docs/provider-compatibility/README.md).
 
+## Download
+
+Windows x64 portable builds are published on [GitHub Releases](https://github.com/xdpdrop/multiclient/releases). Download `Multiclient.exe` and `SHA256SUMS.txt` from the same release.
+
+Verify the EXE in PowerShell:
+
+```powershell
+Get-FileHash .\Multiclient.exe -Algorithm SHA256
+```
+
+The `Hash` value should match the first field of `SHA256SUMS.txt`. Letter case does not matter.
+
 ## Install
 
 Windows x64 portable `Multiclient.exe`.
