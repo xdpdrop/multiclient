@@ -72,7 +72,8 @@ async function runScript(cwd: string) {
     const id = terminals.open(cwd, 'session', 'script', text);
     if (process.platform !== 'win32') terminals.write(id, text);
     const code = await exited;
-    if (code !== 0) throw new Error(`exit ${code}\n${normalizeTerminalBuffer(output)}`);
+    if (code !== 0)
+      throw new Error(`exit ${code}\n${normalizeTerminalBuffer(output)}\n${rawPreview(output)}`);
     return output;
   } finally {
     clearTimeout(timer);
@@ -81,34 +82,34 @@ async function runScript(cwd: string) {
   }
 }
 
-// Temporary: Windows ConPTY hangs on powershell.exe -EncodedCommand with no output
-// and no exit. https://github.com/xdpdrop/multiclient/issues/18
-it.skipIf(process.platform === 'win32')(
-  'reads cwd and a computed marker through the app terminal spawn',
-  async () => {
-    expect(script()).not.toContain('TOKEN_SAVED');
-    expect(script()).not.toContain('DIR_Committed marker');
-    expect(script()).not.toContain('DIR_Dirty primary marker');
-    const root = await mkdtemp(join(tmpdir(), 'multiclient-terminal-'));
-    roots.push(root);
-    const primary = join(root, 'primary');
-    const worktree = join(root, 'worktree');
-    await mkdir(primary);
-    await mkdir(worktree);
-    await writeFile(join(primary, 'marker.txt'), 'Dirty primary marker');
-    await writeFile(join(worktree, 'marker.txt'), 'Committed marker');
+function rawPreview(value: string) {
+  const bytes = Buffer.from(value).subarray(0, 64);
+  return `bytes=${Buffer.byteLength(value)} hex=${bytes.toString('hex')}`;
+}
 
-    const primaryOutput = await runScript(primary);
-    const worktreeOutput = await runScript(worktree);
+// https://github.com/xdpdrop/multiclient/issues/18
+it('reads cwd and a computed marker through the app terminal spawn', async () => {
+  expect(script()).not.toContain('TOKEN_SAVED');
+  expect(script()).not.toContain('DIR_Committed marker');
+  expect(script()).not.toContain('DIR_Dirty primary marker');
+  const root = await mkdtemp(join(tmpdir(), 'multiclient-terminal-'));
+  roots.push(root);
+  const primary = join(root, 'primary');
+  const worktree = join(root, 'worktree');
+  await mkdir(primary);
+  await mkdir(worktree);
+  await writeFile(join(primary, 'marker.txt'), 'Dirty primary marker');
+  await writeFile(join(worktree, 'marker.txt'), 'Committed marker');
 
-    expect(terminalHasLine(primaryOutput, 'TOKEN_SAVED')).toBe(true);
-    expect(terminalHasLine(worktreeOutput, 'TOKEN_SAVED')).toBe(true);
-    expect(await samePath(markedLine(primaryOutput, 'CWD_'), primary)).toBe(true);
-    expect(await samePath(markedLine(worktreeOutput, 'CWD_'), worktree)).toBe(true);
-    expect(terminalHasLine(primaryOutput, 'DIR_Dirty primary marker')).toBe(true);
-    expect(terminalHasLine(worktreeOutput, 'DIR_Committed marker')).toBe(true);
-    expect(terminalHasLine(primaryOutput, 'DIR_Committed marker')).toBe(false);
-    expect(terminalHasLine(worktreeOutput, 'DIR_Dirty primary marker')).toBe(false);
-  },
-  30000,
-);
+  const primaryOutput = await runScript(primary);
+  const worktreeOutput = await runScript(worktree);
+
+  expect(terminalHasLine(primaryOutput, 'TOKEN_SAVED')).toBe(true);
+  expect(terminalHasLine(worktreeOutput, 'TOKEN_SAVED')).toBe(true);
+  expect(await samePath(markedLine(primaryOutput, 'CWD_'), primary)).toBe(true);
+  expect(await samePath(markedLine(worktreeOutput, 'CWD_'), worktree)).toBe(true);
+  expect(terminalHasLine(primaryOutput, 'DIR_Dirty primary marker')).toBe(true);
+  expect(terminalHasLine(worktreeOutput, 'DIR_Committed marker')).toBe(true);
+  expect(terminalHasLine(primaryOutput, 'DIR_Committed marker')).toBe(false);
+  expect(terminalHasLine(worktreeOutput, 'DIR_Dirty primary marker')).toBe(false);
+}, 30000);
