@@ -11,6 +11,8 @@
     "build": "tsc --noEmit && electron-vite build && node scripts/build-artifact-renderer.cjs && node scripts/build-supervisor.cjs",
     "start": "electron-vite preview",
     "typecheck": "tsc --noEmit",
+    "lint": "npm run format:check",
+    "verify": "npm run typecheck && npm run lint && npm test && npm run build",
     "test": "vitest run",
     "test:e2e": "npm run build && playwright test",
     "test:storage": "npm run build && node scripts/test-storage.cjs",
