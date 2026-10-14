@@ -73,6 +73,7 @@
     "node-pty@1.1.0": true
   },
   "overrides": {
+    "http-cache-semantics": "4.3.0",
     "katex": "0.18.2"
   }
 }
