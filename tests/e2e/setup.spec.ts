@@ -1,10 +1,11 @@
 import { test, expect, choose, recordErrors } from './fixtures';
+import { captureDesktop } from './screenshot';
 import { composerCenterDelta, EMPTY_COMPOSER_CENTER_TOLERANCE } from './layout';
 
 test('provider keyboard selection and model controls keep their layout and visibility', async ({
   desktop,
 }) => {
-  const { page } = desktop;
+  const { app, page } = desktop;
   const errors = recordErrors(page);
   const providerPicker = page.getByRole('combobox', { name: 'Provider', exact: true });
   await providerPicker.focus();
@@ -13,7 +14,7 @@ test('provider keyboard selection and model controls keep their layout and visib
   await expect(providerMenu).toBeVisible();
   for (const id of ['codex', 'claude-code', 'cursor'])
     await expect(providerMenu.locator(`[data-provider-logo="${id}"] img:visible`)).toBeVisible();
-  await page.screenshot({ path: 'test-results/provider-picker.png' });
+  await captureDesktop(app, 'test-results/provider-picker.png');
   await page.keyboard.press('ArrowDown');
   await page.keyboard.press('Enter');
   await expect(providerPicker).toHaveAttribute('data-value', 'claude-code');
@@ -44,7 +45,7 @@ test('provider keyboard selection and model controls keep their layout and visib
   await choose(page, 'Provider', 'Claude Code');
   await choose(page, 'Model', 'Claude Opus');
   await page.getByRole('combobox', { name: 'Model', exact: true }).click();
-  await page.screenshot({ path: 'test-results/model-picker.png' });
+  await captureDesktop(app, 'test-results/model-picker.png');
   await page.keyboard.press('Escape');
   await choose(page, 'Reasoning depth', 'Max');
   await expect(
@@ -59,7 +60,7 @@ test('provider keyboard selection and model controls keep their layout and visib
     Math.max(...controls.map((box) => box!.y)) - Math.min(...controls.map((box) => box!.y)),
   ).toBeLessThan(2);
   expect(controls.map((box) => box!.height)).toEqual([34, 34, 34]);
-  await page.screenshot({ path: 'test-results/welcome.png' });
+  await captureDesktop(app, 'test-results/welcome.png');
   await choose(page, 'Model', 'Claude Haiku');
   await expect(page.getByRole('combobox', { name: 'Reasoning depth', exact: true })).toHaveCount(0);
   expect(errors).toEqual([]);
@@ -119,7 +120,7 @@ test('native titlebar controls stay within the draggable window safe area', asyn
 test('connection switches and temporary API credentials preserve the selected billing source', async ({
   desktop,
 }) => {
-  const { page } = desktop;
+  const { app, page } = desktop;
   const errors = recordErrors(page);
   await page.getByRole('button', { name: 'Settings & connections' }).click();
   const cursorConnection = page.getByRole('region', { name: 'Cursor connection' });
@@ -164,7 +165,7 @@ test('connection switches and temporary API credentials preserve the selected bi
     timeout: 45000,
   });
   await expect(page.locator('.connectionStatus[data-state="checking"]')).toHaveCount(0);
-  await page.screenshot({ path: 'test-results/connection-switches.png' });
+  await captureDesktop(app, 'test-results/connection-switches.png');
   for (const provider of ['codex', 'claude-code', 'cursor']) {
     const icon = page.locator(`.connectionCard [data-provider-logo="${provider}"] img:visible`);
     await expect(icon).toHaveCount(1);
@@ -203,7 +204,7 @@ test('connection switches and temporary API credentials preserve the selected bi
       await window.desktop.saveConnection({ ...connection, enabled: true });
     }, provider);
   }
-  await page.screenshot({ path: 'test-results/provider-logos.png' });
+  await captureDesktop(app, 'test-results/provider-logos.png');
   expect(errors).toEqual([]);
 });
 
@@ -212,7 +213,7 @@ test.describe('explicit development mode controls', () => {
   test('mode and permission changes reset bypass access across new chats and providers', async ({
     desktop,
   }) => {
-    const { page } = desktop;
+    const { app, page } = desktop;
     const errors = recordErrors(page);
     await choose(page, 'Provider', 'Claude Code');
     const modePicker = page.getByRole('combobox', { name: 'Mode', exact: true });
@@ -224,7 +225,7 @@ test.describe('explicit development mode controls', () => {
     await expect(modeMenu.getByRole('option')).toHaveCount(4);
     await expect(modeMenu.getByRole('option', { name: /Bypass/ })).toHaveCount(0);
     await expect(modeMenu.getByText('Ask questions and explore files. No changes.')).toBeVisible();
-    await page.screenshot({ path: 'test-results/mode-menu.png' });
+    await captureDesktop(app, 'test-results/mode-menu.png');
     await page.keyboard.press('Escape');
     await choose(page, 'Mode', 'Code');
     await expect(permissions).toHaveAttribute('data-value', 'code');
@@ -232,7 +233,7 @@ test.describe('explicit development mode controls', () => {
     await expect(modePicker).toHaveAttribute('data-value', 'code');
     await expect(permissions).toHaveAttribute('data-value', 'code-bypass');
     await expect(page.getByText('Bypass permissions · full access', { exact: true })).toBeVisible();
-    await page.screenshot({ path: 'test-results/bypass-mode.png' });
+    await captureDesktop(app, 'test-results/bypass-mode.png');
     await page.getByRole('button', { name: 'New conversation', exact: false }).click();
     await expect(modePicker).toHaveAttribute('data-value', 'code');
     await expect(permissions).toHaveAttribute('data-value', 'code');

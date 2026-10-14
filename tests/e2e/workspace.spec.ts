@@ -1,4 +1,5 @@
 import { test, expect, choose } from './fixtures';
+import { captureDesktop } from './screenshot';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
@@ -36,7 +37,7 @@ test('file previews refresh and the context panel overlays at narrow widths', as
   );
   const panel = await page.getByRole('complementary', { name: 'Project context' }).boundingBox();
   expect(panel!.width).toBeGreaterThan(300);
-  await page.screenshot({ path: 'test-results/workspace-panel-narrow.png' });
+  await captureDesktop(app, 'test-results/workspace-panel-narrow.png');
   await page.getByRole('button', { name: 'Close panel' }).click();
   await expect(page.getByLabel('Message', { exact: true })).toBeVisible();
 });

@@ -1,4 +1,5 @@
 import { test, expect, recordErrors } from './fixtures';
+import { captureDesktop } from './screenshot';
 import { writeFile, readFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 
@@ -11,7 +12,7 @@ test('theme persists and media backgrounds honor reduced motion', async ({ deskt
   await page.getByRole('button', { name: 'Dark', exact: true }).click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
   await page.getByRole('button', { name: 'Close dialog' }).click();
-  await page.screenshot({ path: 'test-results/conversation-dark.png' });
+  await captureDesktop(app, 'test-results/conversation-dark.png');
   await desktop.restart();
   app = desktop.app;
   page = desktop.page;
@@ -109,12 +110,12 @@ test('theme persists and media backgrounds honor reduced motion', async ({ deskt
   expect(
     await page.locator('main').evaluate((element) => getComputedStyle(element).backgroundColor),
   ).toBe('rgba(0, 0, 0, 0)');
-  await page.screenshot({ path: 'test-results/background-dark.png' });
+  await captureDesktop(app, 'test-results/background-dark.png');
   await page.getByRole('button', { name: 'Settings & connections' }).click();
   await page.getByRole('button', { name: 'Appearance', exact: true }).click();
   await page.getByRole('button', { name: 'Light', exact: true }).click();
   await page.getByRole('button', { name: 'Close dialog' }).click();
-  await page.screenshot({ path: 'test-results/background-light.png' });
+  await captureDesktop(app, 'test-results/background-light.png');
   expect(
     await page.locator('main > header').evaluate((el) => getComputedStyle(el).backgroundColor),
   ).toBe('rgba(0, 0, 0, 0)');
@@ -132,7 +133,7 @@ test('theme persists and media backgrounds honor reduced motion', async ({ deskt
     });
     await writeFile('test-results/integrated-window.png', Buffer.from(frame, 'base64'));
   }
-  await page.screenshot({ path: 'test-results/composer-light.png' });
+  await captureDesktop(app, 'test-results/composer-light.png');
   expect((await page.locator('main > header').boundingBox())!.height).toBe(42);
   expect(await page.locator('aside').evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(
     'rgba(0, 0, 0, 0)',

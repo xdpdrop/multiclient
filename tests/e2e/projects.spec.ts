@@ -1,4 +1,5 @@
 import { test, expect, choose, recordErrors, sendLocal } from './fixtures';
+import { captureDesktop } from './screenshot';
 import { writeFile, mkdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
@@ -29,7 +30,7 @@ test('project trust, project selection and sidebar filters preserve personal his
   );
   await page.getByRole('combobox', { name: 'Current project' }).click();
   await expect(page.getByRole('listbox', { name: 'Current project' })).toBeVisible();
-  await page.screenshot({ path: 'test-results/project-picker.png' });
+  await captureDesktop(app, 'test-results/project-picker.png');
   await page.keyboard.press('ArrowDown');
   await page.keyboard.press('Enter');
   await expect(page.getByRole('combobox', { name: 'Current project' })).toHaveText(

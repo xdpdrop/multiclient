@@ -1,4 +1,5 @@
 import { test, expect, choose } from './fixtures';
+import { captureDesktop } from './screenshot';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Page } from '@playwright/test';
@@ -71,7 +72,7 @@ test('each conversation retains its own text and attachments across selection an
 test('message-content search opens its match and archived history can be restored', async ({
   desktop,
 }) => {
-  const { page } = desktop;
+  const { app, page } = desktop;
   await sendLocal(page, 'History title');
   await sendLocal(page, 'uniqueneedle2026 exists only in this follow-up');
   const source = await page.evaluate(async () => {
@@ -84,7 +85,7 @@ test('message-content search opens its match and archived history can be restore
   const search = page.getByRole('dialog', { name: 'Search conversations', exact: true });
   await search.getByLabel('Search message content', { exact: true }).fill('uniqueneedle2026');
   await expect(search.locator('.historyResult')).toHaveCount(1);
-  await page.screenshot({ path: 'test-results/history-search.png' });
+  await captureDesktop(app, 'test-results/history-search.png');
   await search.locator('.historyResult').click();
   await expect(search).toHaveCount(0);
   const match = source.messages.find((message) => message.text.includes('uniqueneedle2026'))!;
@@ -102,7 +103,7 @@ test('message-content search opens its match and archived history can be restore
   await expect(
     archive.getByRole('button', { name: 'Restore History title', exact: true }),
   ).toBeVisible();
-  await page.screenshot({ path: 'test-results/history-archive.png' });
+  await captureDesktop(app, 'test-results/history-archive.png');
   await archive.getByRole('button', { name: 'Restore History title', exact: true }).click();
   await expect(
     archive.getByRole('button', { name: 'Restore History title', exact: true }),
