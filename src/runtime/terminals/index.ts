@@ -6,6 +6,36 @@ import type { RuntimeEvent } from '../../shared/types';
 
 export type TerminalInput = 'interactive' | 'script';
 
+/**
+ * Server 2025 ConPTY prints this startup frame, then waits. The DA and cursor
+ * queries are not forwarded on the output pipe. xterm answers them; script
+ * mode has no xterm, so answer once when the frame arrives.
+ * `CSI I` is focus-in for `CSI ? 1004 h`. `CSI ? 1 ; 2 c` is xterm's primary DA.
+ * `CSI 1 ; 1 R` is the cursor position.
+ */
+const CONPTY_STARTUP_REPLY = '\x1b[I\x1b[?1;2c\x1b[1;1R';
+
+/** Replies a headless Windows terminal must write so a ConPTY script can finish. */
+export function conptyScriptReply(data: string, state: { startup: boolean }) {
+  let reply = '';
+  if (!state.startup && (data.includes('\x1b[?9001h') || data.includes('\x1b[?1004h'))) {
+    state.startup = true;
+    reply += CONPTY_STARTUP_REPLY;
+  }
+  if (data.includes('\x1b[6n')) reply += '\x1b[1;1R';
+  if (data.includes('\x1b[?6n')) reply += '\x1b[?1;1R';
+  if (data.includes('\x1b[5n')) reply += '\x1b[0n';
+  if (/\x1b\[0?c/.test(data)) reply += '\x1b[?1;2c';
+  if (/\x1b\[>0?c/.test(data)) reply += '\x1b[>0;276;0c';
+  return reply;
+}
+
+function splitTrailingCsi(data: string) {
+  const match = /\x1b\[[0-9;?]*$/.exec(data);
+  if (!match) return { complete: data, held: '' };
+  return { complete: data.slice(0, match.index), held: match[0] };
+}
+
 /** UTF-16LE base64, the form `powershell.exe -EncodedCommand` accepts. */
 export function windowsScriptArgs(command: string) {
   return [
@@ -62,6 +92,9 @@ export class Terminals {
     this.terminals.set(id, { terminal, workspaceId });
     registerProcess(terminal.pid);
     let buffer = '';
+    let held = '';
+    const conpty = { startup: false };
+    const answerConpty = input === 'script' && process.platform === 'win32';
     let timer: NodeJS.Timeout | undefined;
     const flush = () => {
       if (buffer) {
@@ -71,6 +104,12 @@ export class Terminals {
       timer = undefined;
     };
     terminal.onData((data) => {
+      if (answerConpty) {
+        const split = splitTrailingCsi(held + data);
+        held = split.held;
+        const reply = conptyScriptReply(split.complete, conpty);
+        if (reply) terminal.write(reply);
+      }
       buffer += data;
       if (buffer.length > 1024 * 1024) {
         terminal.kill();

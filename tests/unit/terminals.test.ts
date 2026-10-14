@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { terminalShell, Terminals, windowsScriptArgs } from '../../src/runtime/terminals';
+import {
+  conptyScriptReply,
+  terminalShell,
+  Terminals,
+  windowsScriptArgs,
+} from '../../src/runtime/terminals';
 
 const fixture = vi.hoisted(() => ({ terminals: [] as any[] }));
 vi.mock('node-pty', () => ({
@@ -13,7 +18,9 @@ vi.mock('node-pty', () => ({
       kill: vi.fn(() => exit({ exitCode: 0 })),
       write: vi.fn(),
       resize: vi.fn(),
-      onData: vi.fn(),
+      onData(callback: (data: string) => void) {
+        terminal.emitData = callback;
+      },
       onExit: (callback: typeof exit) => {
         exit = callback;
       },
@@ -74,6 +81,32 @@ describe('workspace terminal ownership', () => {
       expect(fixture.terminals[0].args).toEqual(args);
       expect(fixture.terminals[0].write).not.toHaveBeenCalled();
       terminals.closeAll();
+    }
+  });
+
+  it('answers the ConPTY startup frame only for Windows script mode', () => {
+    const frame = '\x1b[?9001h\x1b[?1004h\x1b[?25l\x1b[2J\x1b[m\x1b[H\x1b[?25h';
+    const state = { startup: false };
+    expect(conptyScriptReply(frame, state)).toBe('\x1b[I\x1b[?1;2c\x1b[1;1R');
+    expect(conptyScriptReply('\x1b[6n', state)).toBe('\x1b[1;1R');
+    expect(conptyScriptReply(frame, state)).toBe('');
+    const original = process.platform;
+    Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+    try {
+      const terminals = new Terminals(() => {});
+      terminals.open('C:\\project', 'workspace', 'script', 'echo hi');
+      terminals.open('C:\\project', 'workspace');
+      const scripted = fixture.terminals[0];
+      const interactive = fixture.terminals[1];
+      scripted.emitData('\x1b[?90');
+      expect(scripted.write).not.toHaveBeenCalled();
+      scripted.emitData('01h\x1b[?1004h');
+      expect(scripted.write).toHaveBeenCalledWith('\x1b[I\x1b[?1;2c\x1b[1;1R');
+      interactive.emitData(frame);
+      expect(interactive.write).not.toHaveBeenCalled();
+      terminals.closeAll();
+    } finally {
+      Object.defineProperty(process, 'platform', { value: original, configurable: true });
     }
   });
 });
