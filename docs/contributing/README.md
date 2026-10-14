@@ -8,4 +8,4 @@ Tests use local fake providers unless explicitly marked as live. The test provid
 
 For native failures, rebuild against Electron's ABI with `npm run postinstall`. Use the supplied N-API PTY binaries where available rather than modifying dependency source or disabling compiler security features.
 
-To release: review dependency licenses and current provider integration conditions, then follow the [version-tag procedure](../guide.md#github-builds-and-releases). After the OS matrix passes, GitHub Actions publishes the unsigned Windows portable EXE and its checksum. The packaging hook includes an inventory of runtime dependency licenses. Signing and macOS/Linux distribution remain later release work. Installed copies do not auto-update.
+To release: review dependency licenses and current provider integration conditions, then follow the [version-tag procedure](../guide.md#github-builds-and-releases). After the OS matrix passes, GitHub Actions publishes the unsigned Windows x64 zip and its checksum. The packaging hook includes an inventory of runtime dependency licenses. Signing and macOS/Linux distribution remain later release work. Installed copies do not auto-update.

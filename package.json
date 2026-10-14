@@ -23,7 +23,7 @@
     "check": "npm run typecheck && npm test && npm run build && node scripts/test-storage.cjs && node scripts/test-history.cjs && node scripts/test-features.cjs && node scripts/test-comparison.cjs && node scripts/test-artifacts.cjs && node scripts/test-web-worker.cjs && playwright test",
     "pack": "npm run build && electron-builder --dir",
     "dist": "npm run build && electron-builder",
-    "dist:win": "npm run build && electron-builder --win portable --x64 --publish never",
+    "dist:win": "npm run build && electron-builder --win zip --x64 --publish never",
     "postinstall": "node scripts/native.cjs",
     "probe": "node scripts/probe.mjs",
     "format": "prettier --write src tests scripts *.ts *.json *.yml docs README.md SECURITY.md THIRD_PARTY_NOTICES.md",

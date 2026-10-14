@@ -88,9 +88,9 @@ jobs:
         run: bash scripts/ci-step.sh npx playwright test
       - run: npm run pack
         if: runner.os != 'Windows'
-      - name: Build Windows portable EXE
+      - name: Build Windows zip
         if: runner.os == 'Windows'
-        run: npx electron-builder --win portable --x64 --publish never
+        run: npx electron-builder --win zip --x64 --publish never
       - name: Verify packaged Windows app
         if: runner.os == 'Windows'
         shell: pwsh
@@ -98,21 +98,21 @@ jobs:
           $env:MULTICLIENT_PACKAGED_PATH = Join-Path $PWD 'release/win-unpacked/Multiclient.exe'
           npx playwright test
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Verify portable launcher and restart
+      - name: Verify zip launch and restart
         if: runner.os == 'Windows'
         run: node scripts/test-portable.cjs
       - name: Create checksum
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $hash = (Get-FileHash -LiteralPath release/Multiclient.exe -Algorithm SHA256).Hash.ToLowerInvariant()
-          "$hash  Multiclient.exe" | Set-Content -LiteralPath release/SHA256SUMS.txt -Encoding ascii
+          $hash = (Get-FileHash -LiteralPath release/Multiclient-win-x64.zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  Multiclient-win-x64.zip" | Set-Content -LiteralPath release/SHA256SUMS.txt -Encoding ascii
       - uses: actions/upload-artifact@v4
         if: runner.os == 'Windows'
         with:
           name: Multiclient-Windows-x64
           path: |
-            release/Multiclient.exe
+            release/Multiclient-win-x64.zip
             release/SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 14
@@ -164,13 +164,13 @@ jobs:
           done
       - name: Build
         run: npm run build
-      - name: Package Windows portable EXE
-        run: npx electron-builder --win portable --x64 --publish never
+      - name: Package Windows zip
+        run: npx electron-builder --win zip --x64 --publish never
       - name: Create release checksum
         shell: pwsh
         run: |
-          $hash = (Get-FileHash -LiteralPath release/Multiclient.exe -Algorithm SHA256).Hash.ToLowerInvariant()
-          "$hash  Multiclient.exe" | Set-Content -LiteralPath release/SHA256SUMS.txt -Encoding ascii
+          $hash = (Get-FileHash -LiteralPath release/Multiclient-win-x64.zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  Multiclient-win-x64.zip" | Set-Content -LiteralPath release/SHA256SUMS.txt -Encoding ascii
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -180,15 +180,15 @@ jobs:
           generate_release_notes: true
           fail_on_unmatched_files: true
           files: |
-            release/Multiclient.exe
+            release/Multiclient-win-x64.zip
             release/SHA256SUMS.txt
           body: |
-            Windows x64 portable preview. Download Multiclient.exe and SHA256SUMS.txt. Run the EXE directly; an installer is not required.
+            Windows x64 preview. Download Multiclient-win-x64.zip and SHA256SUMS.txt. Extract the zip and run Multiclient.exe. An installer is not required.
 
             Verify the download in PowerShell:
 
             ```powershell
-            Get-FileHash .\Multiclient.exe -Algorithm SHA256
+            Get-FileHash .\Multiclient-win-x64.zip -Algorithm SHA256
             ```
 
             The hash should match the first field of SHA256SUMS.txt from this release. Connect an official CLI subscription, an API key, or a separately installed compatible local server. Public execution modes remain gated pending certification.

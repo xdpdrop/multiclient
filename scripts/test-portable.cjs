@@ -1,6 +1,6 @@
 const { chromium, expect } = require('@playwright/test');
 const { spawn, spawnSync } = require('node:child_process');
-const { mkdtemp, rm } = require('node:fs/promises');
+const { mkdir, mkdtemp, rm } = require('node:fs/promises');
 const { createServer } = require('node:net');
 const { tmpdir } = require('node:os');
 const { resolve, join } = require('node:path');
@@ -16,8 +16,7 @@ async function launch(executable, data, restored) {
   await new Promise((done) => server.close(done));
   const env = { ...process.env, MULTICLIENT_TEST_MODE: '1', MULTICLIENT_TEST_DATA: data };
   delete env.ELECTRON_RUN_AS_NODE;
-  // Electron's debugger pipe cannot pass through the self-extracting launcher.
-  // Use Chromium's loopback debugging endpoint only in this isolated test process.
+  // Loopback debugging stays inside this isolated test process.
   const child = spawn(executable, [`--remote-debugging-port=${port}`], {
     cwd: data,
     env,
@@ -68,15 +67,29 @@ async function launch(executable, data, restored) {
 }
 
 async function main() {
-  if (process.platform !== 'win32') throw new Error('The portable EXE test requires Windows.');
-  const executable = resolve(process.argv[2] ?? 'release/Multiclient.exe');
+  if (process.platform !== 'win32')
+    throw new Error('The Windows package launch test requires Windows.');
+  const input = resolve(process.argv[2] ?? 'release/Multiclient-win-x64.zip');
   const data = await mkdtemp(join(tmpdir(), 'Multiclient portable ø '));
+  const extracted = input.toLowerCase().endsWith('.zip')
+    ? await mkdtemp(join(tmpdir(), 'multiclient-zip-'))
+    : null;
   try {
+    let executable = input;
+    if (extracted) {
+      await mkdir(extracted, { recursive: true });
+      const started = Date.now();
+      const result = spawnSync('tar', ['-xf', input, '-C', extracted], { stdio: 'inherit' });
+      if (result.status !== 0) throw new Error('Could not extract the Windows zip.');
+      console.log(`Zip extraction: ${Date.now() - started} ms`);
+      executable = join(extracted, 'Multiclient.exe');
+    }
     await launch(executable, data, false);
     await launch(executable, data, true);
-    console.log('Portable EXE: launch, streaming, persistence, restart and clean exit passed.');
+    console.log('Windows package: launch, streaming, persistence, restart and clean exit passed.');
   } finally {
     await rm(data, { recursive: true, force: true });
+    if (extracted) await rm(extracted, { recursive: true, force: true });
   }
 }
 main().catch((error) => {

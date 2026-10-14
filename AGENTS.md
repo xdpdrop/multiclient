@@ -49,7 +49,7 @@ Provider CLIs (Codex stdio JSON-RPC, Claude Code NDJSON, Cursor ACP) and the use
 | `resources` | App icons (`icon.png`, `icon.ico`, `icon.svg`). |
 | `docs` | User guide, architecture, contributing, provider compatibility. |
 
-electron-vite (`electron.vite.config.ts`) builds main, preload, and renderer separately. Main inputs include the runtime, both bridges, the research worker, and the integration harnesses. Packaged output is `out/`; the Windows portable EXE is `release/Multiclient.exe`. `electron-builder.yml` sets `publish: null`.
+electron-vite (`electron.vite.config.ts`) builds main, preload, and renderer separately. Main inputs include the runtime, both bridges, the research worker, and the integration harnesses. Packaged output is `out/`; the Windows release archive is `release/Multiclient-win-x64.zip`. `electron-builder.yml` sets `publish: null`.
 
 ## IPC
 
@@ -109,7 +109,7 @@ RUNNER_OS=Linux bash scripts/ci-step.sh npx playwright test tests/e2e/history.sp
 
 Doctor checks Node 24, `out/main/index.js`, the Electron binary, and on Linux the chrome-sandbox setuid bit. It does not open a window. `send` sets `MULTICLIENT_TEST_MODE=1`, uses a disposable `MULTICLIENT_TEST_DATA` directory, chooses `Local test provider`, and writes `/tmp/multiclient-verify-evidence/send.json` plus `send.png` from `webContents.capturePage()`. The two Playwright commands are the skill's appearance and history entry points. None of these replace `npm run check`.
 
-Packaging: `npm run pack` (unpacked dir), `npm run dist`, `npm run dist:win` (unsigned portable x64 EXE, `--publish never`). Live provider tests are not scripted; the config is `vitest.live.config.ts`.
+Packaging: `npm run pack` (unpacked dir), `npm run dist`, `npm run dist:win` (unsigned Windows x64 zip, `--publish never`). Live provider tests are not scripted; the config is `vitest.live.config.ts`.
 
 ## Conventions
 
@@ -147,7 +147,7 @@ API billing is separate from CLI subscriptions. Comparison runs two or three API
 
 ### Auto-update and signing
 
-There is no auto-update. Do not add `electron-updater`, a publish feed, or a startup update check. `electron-builder.yml` has `publish: null`. CI sets `CSC_IDENTITY_AUTO_DISCOVERY=false` and publishes an unsigned portable EXE only for `v*` tags, as a prerelease. Signing and notarization stay outside the repo. Do not change the portable target, artifact name `Multiclient.exe`, or the checksum step in `.github/workflows/ci.yml`.
+There is no auto-update. Do not add `electron-updater`, a publish feed, or a startup update check. `electron-builder.yml` has `publish: null`. CI sets `CSC_IDENTITY_AUTO_DISCOVERY=false` and publishes an unsigned Windows x64 zip only for `v*` tags, as a prerelease. Signing and notarization stay outside the repo. Keep the SHA-256 checksum step in `.github/workflows/ci.yml`. Do not switch that release back to the electron-builder `portable` target: its launcher extracts the whole app to `%TEMP%` and deletes that copy on exit, so every start pays the unpack.
 
 ### Brand and UX
 

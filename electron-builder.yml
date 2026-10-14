@@ -30,13 +30,10 @@ win:
     - from: out/main/runtime-supervisor.exe
       to: runtime-supervisor.exe
   icon: resources/icon.ico
+  artifactName: Multiclient-win-x64.zip
   target:
-    - target: portable
+    - target: zip
       arch: [x64]
-portable:
-  artifactName: Multiclient.exe
-  requestExecutionLevel: user
-  unpackDirName: false
 mac:
   icon: resources/icon.png
   category: public.app-category.developer-tools
