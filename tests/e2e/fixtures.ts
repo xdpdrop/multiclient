@@ -8,6 +8,7 @@ import {
 import { mkdtemp, mkdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { addedProjectId } from './project-path';
 
 export type DesktopFixture = {
   app: ElectronApplication;
@@ -68,14 +69,17 @@ export const test = base.extend<{ desktop: DesktopFixture; developmentModes: boo
             .check();
           await dialog.getByRole('button', { name: 'Choose folder', exact: true }).click();
           await expect(dialog).toHaveCount(0);
-          const id = await page.evaluate(
-            async (selected) =>
-              (await window.desktop.snapshot()).projects.find(
-                (project) => project.path === selected,
-              )!.id,
+          const id = await addedProjectId(
+            await page.evaluate(async () => (await window.desktop.snapshot()).projects),
             path,
           );
+          // Trust is applied in the main process immediately, but the renderer
+          // refreshes its snapshot 75ms later. Open the project tools only after
+          // that refresh, or Create worktree stays disabled on the stale project.
+          const trust = page.getByRole('button', { name: 'Trust project', exact: true });
+          await expect(trust).toBeVisible();
           await page.evaluate((projectId) => window.desktop.trustProject(projectId, true), id);
+          await expect(trust).toHaveCount(0);
           return id;
         },
       });
@@ -120,14 +124,4 @@ export async function sendLocal(page: Page, text: string) {
     .toBe(true);
   await expect(page.locator('article[data-message-role="user"]').last()).toBeVisible();
   await expect(page.getByRole('button', { name: 'Stop response', exact: true })).toHaveCount(0);
-}
-
-export async function waitForShellPrompt(page: Page, outputKey: string, cwd: string) {
-  const output = () =>
-    page.evaluate(
-      (key) => String((window as any)[key] ?? '').replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, ''),
-      outputKey,
-    );
-  if (process.platform === 'win32') await expect.poll(output).toContain(`PS ${cwd}>`);
-  else await expect.poll(output).toMatch(/[$#>%]\s*$/);
 }

@@ -25,11 +25,67 @@ jobs:
       - name: Check release version
         if: startsWith(github.ref, 'refs/tags/v')
         run: node -e "const expected = 'v' + require('./package.json').version; if (process.env.GITHUB_REF_NAME !== expected) throw new Error('Tag must match package.json version (' + expected + ')');"
-      - run: npm ci
-      - run: npm run check
-        if: runner.os != 'Linux'
-      - run: xvfb-run --auto-servernum npm run check
+      - name: Cache Electron downloads
+        uses: actions/cache@v4
+        with:
+          # @electron/get via env-paths: ~/.cache/electron, ~/Library/Caches/electron,
+          # and %LOCALAPPDATA%\electron\Cache. A transient HTTP 500 leaves the zip here.
+          path: ${{ runner.os == 'Windows' && format('{0}\electron\Cache', env.LOCALAPPDATA) || (runner.os == 'macOS' && format('{0}/Library/Caches/electron', env.HOME) || format('{0}/.cache/electron', env.HOME)) }}
+          key: electron-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            electron-${{ runner.os }}-
+      - name: Install dependencies
+        shell: bash
+        run: |
+          set -eu
+          for attempt in 1 2 3; do
+            if npm ci; then
+              exit 0
+            fi
+            echo "npm ci failed on attempt ${attempt}"
+            if [ "$attempt" -eq 3 ]; then
+              exit 1
+            fi
+            rm -rf node_modules
+            sleep $((attempt * 5))
+          done
+      - name: Configure Electron sandbox
         if: runner.os == 'Linux'
+        run: |
+          # Electron aborts unless chrome-sandbox is owned by root and mode 4755.
+          # This is CI setup only. The smoke script does not pass --no-sandbox.
+          sandbox="node_modules/electron/dist/chrome-sandbox"
+          sudo chown root:root "$sandbox"
+          sudo chmod 4755 "$sandbox"
+      - name: Install a window manager
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y openbox
+      # Local `npm run check` stays one chain. CI splits it so a failure still runs
+      # the later steps. success() || failure() does not match cancelled. A failed
+      # step still fails the job. Linux runs each step under Xvfb + Openbox.
+      - name: Typecheck
+        shell: bash
+        run: bash scripts/ci-step.sh npm run typecheck
+      - name: Unit tests
+        if: success() || failure()
+        shell: bash
+        run: bash scripts/ci-step.sh npm test
+      - name: Build
+        if: success() || failure()
+        shell: bash
+        run: bash scripts/ci-step.sh npm run build
+      - name: Integration scripts
+        if: success() || failure()
+        shell: bash
+        run: bash scripts/ci-step.sh bash -lc "node scripts/test-storage.cjs && node scripts/test-history.cjs && node scripts/test-features.cjs && node scripts/test-comparison.cjs && node scripts/test-artifacts.cjs"
+      - name: Smoke
+        if: success() || failure()
+        shell: bash
+        run: bash scripts/ci-step.sh node scripts/test-web-worker.cjs
+      - name: Playwright
+        if: success() || failure()
+        shell: bash
+        run: bash scripts/ci-step.sh npx playwright test
       - run: npm run pack
         if: runner.os != 'Windows'
       - name: Build Windows portable EXE
