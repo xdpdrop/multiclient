@@ -49,11 +49,21 @@ async function launchOnce(exe, mode) {
     if (measured.firstWindowMs == null) {
       throw new Error(`No window for ${exe}: ${JSON.stringify(measured)}`);
     }
+    console.log(`launch ${mode} ${JSON.stringify(measured)}`);
     return measured;
   } finally {
     killTree(child?.pid);
     killTree(monitor.pid);
-    await rm(work, { recursive: true, force: true });
+    await delay(1000);
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      try {
+        await rm(work, { recursive: true, force: true });
+        break;
+      } catch (error) {
+        console.error(`cleanup attempt ${attempt + 1}: ${error.message}`);
+        await delay(500);
+      }
+    }
   }
 }
 
