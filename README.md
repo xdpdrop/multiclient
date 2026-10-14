@@ -21,22 +21,22 @@ Not every provider supports every input or editing mode. Details are in the [use
 
 ## Download
 
-Windows x64 portable builds are published on [GitHub Releases](https://github.com/xdpdrop/multiclient/releases). Download `Multiclient.exe` and `SHA256SUMS.txt` from the same release.
+Windows x64 builds are published as a zip on [GitHub Releases](https://github.com/xdpdrop/multiclient/releases). Download `Multiclient-win-x64.zip` and `SHA256SUMS.txt` from the same release.
 
-Verify the EXE in PowerShell:
+Verify the zip in PowerShell:
 
 ```powershell
-Get-FileHash .\Multiclient.exe -Algorithm SHA256
+Get-FileHash .\Multiclient-win-x64.zip -Algorithm SHA256
 ```
 
 The `Hash` value should match the first field of `SHA256SUMS.txt`. Letter case does not matter.
 
 ## Install
 
-Windows x64 portable `Multiclient.exe`.
+Windows x64 zip.
 
 1. Download from [Releases](https://github.com/xdpdrop/multiclient/releases), or from **Actions → Build and verify → Artifacts → Multiclient-Windows-x64** if you need a CI build.
-2. Put the file anywhere and run it. Updating the EXE on the same PC keeps your existing profile.
+2. Extract the zip and run `Multiclient.exe` from that folder. The profile stays in `%APPDATA%\multiclient`. Keep the extracted files together; the EXE needs the resources beside it.
 
 ## Build from source
 
@@ -48,7 +48,7 @@ npm run dev
 ```
 
 - `npm run check` — typecheck, unit tests, build, integration scripts, Playwright
-- `npm run dist:win` — writes `release/Multiclient.exe`
+- `npm run dist:win` — writes `release/Multiclient-win-x64.zip`
 
 ## Use
 

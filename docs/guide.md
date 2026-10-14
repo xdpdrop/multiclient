@@ -1,6 +1,6 @@
 # User and release guide
 
-Multiclient keeps everyday AI chat and project work in one Windows desktop workspace. Conversations, drafts, settings and captured attachments stay in `%APPDATA%/multiclient`. Moving the portable EXE preserves that profile on the same computer; it does not move your profile or provider accounts to another computer.
+Multiclient keeps everyday AI chat and project work in one Windows desktop workspace. Conversations, drafts, settings and captured attachments stay in `%APPDATA%/multiclient`. Extract the Windows zip and run `Multiclient.exe` from that folder. Replacing the extracted folder on the same computer keeps that profile; it does not move your profile or provider accounts to another computer.
 
 Provider capabilities vary. Editing modes remain gated until the provider/version/platform permission checklist is complete. No general ChatGPT or Claude web-subscription API is included. See [provider compatibility](provider-compatibility/README.md) and the [implementation status](implementation-status.md).
 
@@ -136,13 +136,13 @@ npx playwright test --repeat-each=2 --retries=0
 node scripts/test-portable.cjs
 ```
 
-`npm run build` includes Windows runtime-supervisor compilation using the installed .NET Framework C# compiler. `npm run postinstall` rebuilds SQLite for Electron; do not substitute Node-ABI native builds. `npm run dist:win` creates `release/Multiclient.exe`. macOS/Linux need their own build, native dependency, lifecycle and package smoke tests; Windows success does not certify them.
+`npm run build` includes Windows runtime-supervisor compilation using the installed .NET Framework C# compiler. `npm run postinstall` rebuilds SQLite for Electron; do not substitute Node-ABI native builds. `npm run dist:win` creates `release/Multiclient-win-x64.zip`. macOS/Linux need their own build, native dependency, lifecycle and package smoke tests; Windows success does not certify them.
 
 ## Release prerequisites
 
 Before publishing a release, run all deterministic checks and the packaged Windows smoke tests, review dependency notices, verify backup/restore with an existing profile, and record the exact supported provider versions. Finish the remaining live-account and permission certification before enabling public write modes.
 
-The existing GitHub workflow produces Windows portable EXE artifacts and checksums. A matching `v` tag can publish a GitHub Release after CI checks. CI never receives live provider accounts. Do not equate an artifact or green synthetic CI run with completed permission certification.
+The existing GitHub workflow produces a Windows x64 zip and its checksum. A matching `v` tag can publish a GitHub Release after CI checks. CI never receives live provider accounts. Do not equate an artifact or green synthetic CI run with completed permission certification.
 
 Use [the usability study](usability-study.md) to recruit and evaluate actual users. The repository supplies a protocol; it has not recruited testers or measured retention.
 
