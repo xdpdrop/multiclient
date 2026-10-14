@@ -1,9 +1,10 @@
 import { test, expect, recordErrors, sendLocal } from './fixtures';
+import { captureDesktop } from './screenshot';
 
 test('Markdown remains inert and progress, tables and activities stay with their messages', async ({
   desktop,
 }) => {
-  const { page } = desktop;
+  const { app, page } = desktop;
   const errors = recordErrors(page);
   // Raw HTML and remote images in user-controlled Markdown must remain inert.
   let remoteRequests = 0;
@@ -24,7 +25,7 @@ test('Markdown remains inert and progress, tables and activities stay with their
   await expect(page.getByText('Checking the folder.', { exact: true })).not.toBeVisible();
   await page.getByText('Progress update', { exact: true }).click();
   await expect(page.getByText('Checking the folder.', { exact: true })).toBeVisible();
-  await page.screenshot({ path: 'test-results/message-blocks.png' });
+  await captureDesktop(app, 'test-results/message-blocks.png');
   await page.getByLabel('Message', { exact: true }).fill('[table] Compare the hosting options');
   await page.getByRole('button', { name: 'Send message', exact: true }).click();
   await expect(
@@ -49,6 +50,6 @@ test('Markdown remains inert and progress, tables and activities stay with their
   const userBubble = await page.locator('article[data-message-role="user"]').last().boundingBox();
   const assistantBubble = await tableReply.boundingBox();
   expect(userBubble!.x).toBeGreaterThan(assistantBubble!.x);
-  await page.screenshot({ path: 'test-results/chat-bubbles.png' });
+  await captureDesktop(app, 'test-results/chat-bubbles.png');
   expect(errors).toEqual([]);
 });

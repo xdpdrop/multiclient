@@ -1,14 +1,6 @@
 import { test, expect, choose, recordErrors } from './fixtures';
-import type { ElectronApplication, Locator, Page } from '@playwright/test';
-import { writeFile } from 'node:fs/promises';
-
-async function screenshot(app: ElectronApplication, path: string) {
-  const png = await app.evaluate(async ({ BrowserWindow }) => {
-    const image = await BrowserWindow.getAllWindows()[0].webContents.capturePage();
-    return image.toPNG().toString('base64');
-  });
-  await writeFile(path, Buffer.from(png, 'base64'));
-}
+import type { Locator, Page } from '@playwright/test';
+import { captureDesktop } from './screenshot';
 
 async function tabTo(page: Page, target: Locator) {
   for (let attempt = 0; attempt < 80; attempt++) {
@@ -44,7 +36,7 @@ async function expectInsideViewport(target: Locator) {
 }
 
 test('plain light welcome uses readable foreground contrast', async ({ desktop }) => {
-  const { page } = desktop;
+  const { app, page } = desktop;
   await page.evaluate(() => window.desktop.settingsPatch({ appearance: { theme: 'light' } }));
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
   const heading = page.getByRole('heading', { name: 'What’s next?' });
@@ -67,7 +59,7 @@ test('plain light welcome uses readable foreground contrast', async ({ desktop }
   });
   expect(colors.contrast).toBeGreaterThanOrEqual(4.5);
   await expectInsideViewport(heading);
-  await page.screenshot({ path: 'test-results/plain-light-welcome.png' });
+  await captureDesktop(app, 'test-results/plain-light-welcome.png');
 });
 
 test('200% zoom keeps keyboard navigation, settings and Send inside an 800 by 600 window', async ({
@@ -88,7 +80,7 @@ test('200% zoom keeps keyboard navigation, settings and Send inside an 800 by 60
   expect(viewport.width).toBeLessThanOrEqual(400);
   expect(viewport.height).toBeLessThanOrEqual(300);
   expect(viewport.width).toBeGreaterThanOrEqual(390);
-  await screenshot(app, 'test-results/zoom-200-initial.png');
+  await captureDesktop(app, 'test-results/zoom-200-initial.png');
   const expand = page.getByRole('button', { name: 'Expand sidebar', exact: true });
   await expect(expand).toBeVisible();
   const message = page.getByLabel('Message', { exact: true });
@@ -99,7 +91,7 @@ test('200% zoom keeps keyboard navigation, settings and Send inside an 800 by 60
   await expect(send).toBeEnabled();
   await tabTo(page, send);
   await expectInsideViewport(send);
-  await screenshot(app, 'test-results/zoom-200-composer.png');
+  await captureDesktop(app, 'test-results/zoom-200-composer.png');
 
   await tabTo(page, expand);
   await page.keyboard.press('Enter');
@@ -113,7 +105,7 @@ test('200% zoom keeps keyboard navigation, settings and Send inside an 800 by 60
   await tabTo(page, appearance);
   await expectInsideViewport(appearance);
   await page.keyboard.press('Enter');
-  await screenshot(app, 'test-results/zoom-200-settings.png');
+  await captureDesktop(app, 'test-results/zoom-200-settings.png');
   const close = dialog.getByRole('button', { name: 'Close dialog', exact: true });
   await tabTo(page, close);
   await expectInsideViewport(close);

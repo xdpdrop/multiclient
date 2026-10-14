@@ -1778,6 +1778,11 @@ export function App() {
                           setModel(event.target.value);
                           setEffort('');
                         }}
+                        onKeyDown={(event) => {
+                          if (event.key !== 'Enter' || event.nativeEvent.isComposing) return;
+                          event.preventDefault();
+                          setCustomModel(false);
+                        }}
                         onBlur={() => {
                           setCustomModel(false);
                         }}
