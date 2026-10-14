@@ -66,7 +66,7 @@ New features extend the named Zod contract in `src/shared`, the runtime dispatch
 
 ## Commands
 
-Requires Node.js 24, npm, and Git. Use the committed lockfile. `npm ci` runs `postinstall` (`node scripts/native.cjs`), which rebuilds `better-sqlite3` against Electron's ABI and, on Linux, `node-pty` as well.
+Requires Node.js 24, npm, and Git. Use the committed lockfile. `npm ci` runs `postinstall` (`node scripts/native.cjs`). That script requires the bundled `better-sqlite3` Node-API prebuild and does not compile it. On Linux it rebuilds `node-pty` against Electron. It also marks `node-pty` `spawn-helper` files executable, which macOS needs at mode `0755`.
 
 ```sh
 npm ci
@@ -78,7 +78,7 @@ npm run test:e2e
 
 | Script | Exact command | What it does |
 | --- | --- | --- |
-| Install | `npm ci` | Clean install from `package-lock.json`, then native rebuild. |
+| Install | `npm ci` | Clean install from `package-lock.json`, then `scripts/native.cjs` (Linux `node-pty` rebuild only). |
 | Dev | `npm run dev` | `electron-vite dev`. |
 | Build | `npm run build` | `tsc --noEmit && electron-vite build && node scripts/build-artifact-renderer.cjs && node scripts/build-supervisor.cjs`. The C# step no-ops off Windows. |
 | Unit tests | `npm test` | `vitest run`. Includes `tests/unit/**/*.test.ts` and `tests/contracts/**/*.test.ts`. Timeout 10s, max 2 workers (`vitest.config.ts`). |
@@ -92,20 +92,36 @@ npm run format:check
 npm run check
 ```
 
-`npm run typecheck` is `tsc --noEmit`. `npm run format:check` is Prettier. `npm run check` is the CI gate: typecheck, unit/contract tests, production build, the storage/history/features/comparison/artifacts/web-worker harnesses, and Playwright. On Linux, Electron needs a display; CI runs `xvfb-run --auto-servernum npm run check`. History acceptance alone is `npm run test:history`.
+`npm run typecheck` is `tsc --noEmit`. `npm run format:check` is Prettier (`src`, `tests`, `scripts`, root `*.ts` / `*.json` / `*.yml`, `docs`, `README.md`, `SECURITY.md`, and `THIRD_PARTY_NOTICES.md`). `npm run check` is the local full gate: typecheck, unit/contract tests, production build, `node scripts/test-storage.cjs`, `test-history.cjs`, `test-features.cjs`, `test-comparison.cjs`, `test-artifacts.cjs`, `test-web-worker.cjs`, and `playwright test`. Shortcuts that build first are `npm run test:storage`, `test:history`, `test:features`, `test:comparison`, `test:artifacts`, and `test:e2e`.
+
+GitHub Actions (`.github/workflows/ci.yml`, job `verify`) runs those pieces as separate steps on `ubuntu-latest`, `windows-latest`, and `macos-latest` through `bash scripts/ci-step.sh`. On Linux that wrapper starts Xvfb (`-screen 0 1600x1200x24`) and Openbox. Xvfb alone does not implement EWMH, so `BrowserWindow.maximize()` would not report maximized. Linux CI also sets `node_modules/electron/dist/chrome-sandbox` to owner root and mode `4755` before the steps. The workflow does not call a single `npm run check` process. There is no `npm run verify` script on this branch.
+
+### Desktop verification skill
+
+`.cursor/skills/verify-multiclient` drives a local send, a theme change, and history search. It is not in this branch. It is on the agent-config branch (pull request #1). When that directory is present, after `npm ci` and `npm run build`, and after the Linux chrome-sandbox mode above:
+
+```sh
+node .cursor/skills/verify-multiclient/scripts/verify.mjs doctor
+RUNNER_OS=Linux bash scripts/ci-step.sh node .cursor/skills/verify-multiclient/scripts/verify.mjs send
+RUNNER_OS=Linux bash scripts/ci-step.sh npx playwright test tests/e2e/appearance.spec.ts -g "theme persists" --retries=0
+RUNNER_OS=Linux bash scripts/ci-step.sh npx playwright test tests/e2e/history.spec.ts -g "message-content search" --retries=0
+```
+
+Doctor checks Node 24, `out/main/index.js`, the Electron binary, and on Linux the chrome-sandbox setuid bit. It does not open a window. `send` sets `MULTICLIENT_TEST_MODE=1`, uses a disposable `MULTICLIENT_TEST_DATA` directory, chooses `Local test provider`, and writes `/tmp/multiclient-verify-evidence/send.json` plus `send.png` from `webContents.capturePage()`. The two Playwright commands are the skill's appearance and history entry points. None of these replace `npm run check`.
 
 Packaging: `npm run pack` (unpacked dir), `npm run dist`, `npm run dist:win` (unsigned portable x64 EXE, `--publish never`). Live provider tests are not scripted; the config is `vitest.live.config.ts`.
 
 ## Conventions
 
 - Formatting is Prettier (`.prettierrc.json`): single quotes, semicolons, trailing commas, print width 100. There is no ESLint config.
+- Application source is Elastic License 2.0 (`LICENSE`, licensor xdpdrop). Do not relicense the tree. Release tags from before that change remain MIT.
 - Stay inside the subsystem you are changing. `src/shared` cannot import Electron. Provider adapters cannot import React. Only storage modules execute SQL.
 - Contracts are Zod schemas, usually `.strict()`. Add a route, a preload method, and a runtime handler together.
 - Normalized provider events represent real behavior. Do not pretend every adapter supports the same tools.
 - Tests use local fake providers. The test provider is selected only through the launch environment (`MULTICLIENT_TEST_MODE`, `MULTICLIENT_TEST_DATA`). Do not add a UI control that sets that environment or bypasses permission gates.
 - Public write modes follow the provider/version/OS certification matrix. Synthetic or skipped live tests do not unlock them.
 - Migrations are additive SQL files under `migrations/`. Do not rewrite applied history.
-- Do not commit credentials, `.env` secrets, local databases, raw provider transcripts, `out/`, `release/`, or Playwright output (`test-results/`, `playwright-report/`).
+- Do not commit credentials, `.env` secrets, local databases, raw provider transcripts, `out/`, `release/`, or Playwright output (`test-results/`, `test-results-*`, `playwright-report/`).
 - Windows x64 is the first shipping target. The preview EXE is unsigned and does not auto-update.
 
 ## No-go zones
