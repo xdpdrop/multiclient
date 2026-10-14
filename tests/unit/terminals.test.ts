@@ -3,13 +3,14 @@ import { terminalShell, Terminals, windowsScriptArgs } from '../../src/runtime/t
 
 const fixture = vi.hoisted(() => ({ terminals: [] as any[] }));
 vi.mock('node-pty', () => ({
-  spawn: (file: string, args: string[], options: { cwd?: string }) => {
+  spawn: (file: string, args: string[], options: { cwd?: string; useConptyDll?: boolean }) => {
     let exit = (_info: { exitCode: number }) => {};
     const terminal = {
       pid: 2000 + fixture.terminals.length,
       file,
       args,
       cwd: options.cwd,
+      options,
       kill: vi.fn(() => exit({ exitCode: 0 })),
       write: vi.fn(),
       resize: vi.fn(),
@@ -61,23 +62,25 @@ describe('workspace terminal ownership', () => {
   it('round-trips a quoted non-ASCII Windows script through EncodedCommand', () => {
     const command = `echo "say 'hi'"\r\nWrite-Output 'café 日本語'`;
     const args = windowsScriptArgs(command);
-    expect(args.slice(0, 3)).toEqual(['/d', '/s', '/c']);
-    const encoded = Buffer.from(command, 'utf16le').toString('base64');
-    expect(args[3]).toContain(
-      ` -NoLogo -NoProfile -NonInteractive -EncodedCommand ${encoded} < NUL`,
-    );
-    expect(args[3].startsWith('powershell.exe -')).toBe(false);
+    expect(args.slice(0, 4)).toEqual([
+      '-NoLogo',
+      '-NoProfile',
+      '-NonInteractive',
+      '-EncodedCommand',
+    ]);
+    expect(Buffer.from(args[4], 'base64').toString('utf16le')).toBe(command);
     const original = process.platform;
     Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
     try {
       const terminals = new Terminals(() => {});
       terminals.open('C:\\project', 'workspace', 'script', command);
       terminals.open('C:\\project', 'workspace');
-      expect(fixture.terminals[0].file.endsWith('cmd.exe')).toBe(true);
+      expect(fixture.terminals[0].file.endsWith('powershell.exe')).toBe(true);
       expect(fixture.terminals[0].args).toEqual(args);
+      expect(fixture.terminals[0].options.useConptyDll).toBe(true);
       expect(fixture.terminals[0].write).not.toHaveBeenCalled();
-      expect(fixture.terminals[1].file.endsWith('powershell.exe')).toBe(true);
       expect(fixture.terminals[1].args).toEqual(['-NoLogo', '-NoProfile']);
+      expect(fixture.terminals[1].options.useConptyDll).toBeUndefined();
       expect(fixture.terminals[1].write).not.toHaveBeenCalled();
       expect(terminalShell().args).toEqual(['-NoLogo', '-NoProfile']);
       terminals.closeAll();

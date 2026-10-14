@@ -7,20 +7,18 @@ import type { RuntimeEvent } from '../../shared/types';
 export type TerminalInput = 'interactive' | 'script';
 
 /**
- * ConPTY stdin is a console, so Windows PowerShell enters the interactive host
- * and stops on the `CSI ?9001h` frame instead of running `-EncodedCommand`.
- * `cmd /s /c` applies `< NUL`, which redirects that stdin. Interactive shells
- * are unchanged.
+ * OS ConPTY on Server 2025 prints a startup frame and does not run a headless
+ * client. Device-attribute replies left that frame unchanged, and `cmd /c`
+ * stopped on cmd's own frame. Script mode uses the ConPTY host shipped with
+ * node-pty. Interactive shells stay on the system ConPTY.
  */
 export function windowsScriptArgs(command: string) {
-  const root = process.env.SystemRoot ?? 'C:\\Windows';
-  const powershell = join(root, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
-  const encoded = Buffer.from(command, 'utf16le').toString('base64');
   return [
-    '/d',
-    '/s',
-    '/c',
-    `${powershell} -NoLogo -NoProfile -NonInteractive -EncodedCommand ${encoded} < NUL`,
+    '-NoLogo',
+    '-NoProfile',
+    '-NonInteractive',
+    '-EncodedCommand',
+    Buffer.from(command, 'utf16le').toString('base64'),
   ];
 }
 
@@ -32,7 +30,9 @@ export function terminalShell(input: TerminalInput = 'interactive', command = ''
       file: join(
         process.env.SystemRoot ?? 'C:\\Windows',
         'System32',
-        script ? 'cmd.exe' : 'powershell.exe',
+        'WindowsPowerShell',
+        'v1.0',
+        'powershell.exe',
       ),
       args: script ? windowsScriptArgs(command) : ['-NoLogo', '-NoProfile'],
     };
@@ -62,6 +62,7 @@ export class Terminals {
         TERM: 'xterm-256color',
         ...(input === 'script' ? { PS1: '', PS2: '', PROMPT: '', RPROMPT: '' } : {}),
       } as Record<string, string>,
+      ...(process.platform === 'win32' && input === 'script' ? { useConptyDll: true } : {}),
     });
     const id = randomUUID();
     this.terminals.set(id, { terminal, workspaceId });
