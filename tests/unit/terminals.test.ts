@@ -110,10 +110,13 @@ describe('workspace terminal ownership', () => {
       terminals.open('C:\\project', 'workspace');
       const scripted = fixture.terminals[0];
       const interactive = fixture.terminals[1];
+      const input = { write: vi.fn() };
+      scripted._agent = { inSocket: input };
       scripted.emitData('\x1b[1');
-      expect(scripted.write).not.toHaveBeenCalled();
+      expect(input.write).not.toHaveBeenCalled();
       scripted.emitData('t\x1b[c\x1b[?9001h');
-      expect(scripted.write).toHaveBeenCalledWith('\x1b[?1;2c');
+      expect(input.write).toHaveBeenCalledWith('\x1b[?1;2c');
+      expect(scripted.write).not.toHaveBeenCalled();
       interactive.emitData(frame);
       expect(interactive.write).not.toHaveBeenCalled();
       terminals.closeAll();

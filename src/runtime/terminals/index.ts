@@ -27,6 +27,19 @@ function splitTrailingCsi(data: string) {
   return { complete: data.slice(0, match.index), held: match[0] };
 }
 
+/**
+ * `terminal.write` is queued until node-pty marks the pty ready, and that flag
+ * stays false while ConPTY is blocked in its device-attributes read. The input
+ * pipe is already open, so script mode writes the reply there.
+ */
+function writePtyInput(terminal: pty.IPty, data: string) {
+  const input = (
+    terminal as pty.IPty & { _agent?: { inSocket?: { write: (chunk: string) => void } } }
+  )._agent?.inSocket;
+  if (input) input.write(data);
+  else terminal.write(data);
+}
+
 /** UTF-16LE base64, the form `powershell.exe -EncodedCommand` accepts. */
 export function windowsScriptArgs(command: string) {
   return [
@@ -99,7 +112,7 @@ export class Terminals {
         const split = splitTrailingCsi(held + data);
         held = split.held;
         const reply = conptyScriptReply(split.complete);
-        if (reply) terminal.write(reply);
+        if (reply) writePtyInput(terminal, reply);
       }
       buffer += data;
       if (buffer.length > 1024 * 1024) {
