@@ -1,4 +1,5 @@
 import { test, expect, _electron as electron } from '@playwright/test';
+import { captureDesktop } from './screenshot';
 import { mkdtemp, mkdir, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -56,7 +57,7 @@ test('live Codex Code approval changes a file through the desktop', async () => 
       code: 'ENOENT',
     });
     await expect(page.locator('.approvalDetail')).toContainText('target.txt');
-    await page.screenshot({ path: 'test-results/codex-code-approval.png' });
+    await captureDesktop(app, 'test-results/codex-code-approval.png');
     await page.getByRole('button', { name: 'Allow once', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Stop response', exact: true })).toHaveCount(0, {
       timeout: 30000,
