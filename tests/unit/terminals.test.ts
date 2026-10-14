@@ -18,6 +18,7 @@ vi.mock('node-pty', () => ({
       kill: vi.fn(() => exit({ exitCode: 0 })),
       write: vi.fn(),
       resize: vi.fn(),
+      emitData: (_data: string) => {},
       onData(callback: (data: string) => void) {
         terminal.emitData = callback;
       },
