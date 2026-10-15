@@ -1,8 +1,19 @@
 name: Build and verify
 on:
   push:
+    branches: [main]
+    # v* tags start the release job below. GitHub does not evaluate
+    # paths-ignore for tag pushes, so a tag always runs.
+    tags: ['v*']
+    paths-ignore: ['**/*.md', 'docs/**']
   pull_request:
+    paths-ignore: ['**/*.md', 'docs/**']
   workflow_dispatch:
+# One run per workflow and ref. Only pull request runs are cancelled when a
+# newer commit arrives; main and tag (release) runs always finish.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 permissions:
   contents: read
 jobs:
@@ -121,8 +132,8 @@ jobs:
         with:
           name: test-results-${{ matrix.os }}
           path: test-results
-  # Branch pushes, pull requests, and workflow_dispatch do not match, so this job
-  # is skipped. on: push has no branch filter, so a v* tag push still starts the
+  # main pushes, pull requests, and workflow_dispatch do not match, so this job
+  # is skipped. on: push lists tags: ['v*'], so a v* tag push starts the
   # workflow and then runs this job after verify. The tag must already exist;
   # this job does not create one.
   release:
