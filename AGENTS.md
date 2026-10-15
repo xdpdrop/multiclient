@@ -98,7 +98,7 @@ GitHub Actions (`.github/workflows/ci.yml`, job `verify`) runs those pieces as s
 
 ### Desktop verification skill
 
-`.cursor/skills/verify-multiclient` drives a local send, a theme change, and history search. It is not on `main` yet; pull request #29 adds it. When that directory is present, after `npm ci` and `npm run build`, and after the Linux chrome-sandbox mode above:
+The verify skill at `.cursor/skills/verify-multiclient` drives a local send, a theme change, and history search. After `npm ci` and `npm run build`, and after the Linux chrome-sandbox mode above:
 
 ```sh
 node .cursor/skills/verify-multiclient/scripts/verify.mjs doctor
