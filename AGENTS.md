@@ -8,17 +8,17 @@ Deeper narrative lives in [docs/architecture/README.md](docs/architecture/README
 
 The app is several processes with a hard trust split. The renderer cannot reach Node, Electron, or SQLite.
 
-| Process | Entry | Role |
-| --- | --- | --- |
-| Main | `src/main/index.ts` | Browser window, privileged IPC, OS dialogs, `safeStorage` credentials, `app://` and `media://` protocols, exports, backup/restore, artifact preview windows. |
-| Preload | `src/preload/index.ts` | `contextBridge` surface `window.desktop`. Named calls only. |
-| Renderer | `src/renderer/src/main.tsx`, `src/renderer/App.tsx` | Sandboxed React + Zustand UI. `sandbox: true`, `contextIsolation: true`, `nodeIntegration: false`. |
-| Runtime | `src/runtime/index.ts` | Electron utility process (`utilityProcess.fork`, service name `Multiclient runtime`). Owns SQLite, provider adapters, terminals, research, artifacts, and workspace tools. |
-| Claude permission bridge | `src/bridges/claude-permissions/index.ts` | Local socket helper. Forwards approval requests; denies them when the host is unavailable. |
-| Workspace tools bridge | `src/bridges/workspace-tools/index.ts` | JSON-RPC helper for folder-project tools. |
-| Research parser worker | `src/runtime/research/parser-worker.ts` | Bounded HTML/PDF extraction. |
-| Diagram preview | `src/renderer/artifact-diagram.ts` | Separate restricted window. Bundled to `out/main/artifact-diagram.js`. No Node, scripts, navigation, or network. |
-| Windows supervisor | `src/main/native/RuntimeSupervisor.cs` | C# Job Object helper. Windows only. See below. |
+| Process                  | Entry                                               | Role                                                                                                                                                                       |
+| ------------------------ | --------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Main                     | `src/main/index.ts`                                 | Browser window, privileged IPC, OS dialogs, `safeStorage` credentials, `app://` and `media://` protocols, exports, backup/restore, artifact preview windows.               |
+| Preload                  | `src/preload/index.ts`                              | `contextBridge` surface `window.desktop`. Named calls only.                                                                                                                |
+| Renderer                 | `src/renderer/src/main.tsx`, `src/renderer/App.tsx` | Sandboxed React + Zustand UI. `sandbox: true`, `contextIsolation: true`, `nodeIntegration: false`.                                                                         |
+| Runtime                  | `src/runtime/index.ts`                              | Electron utility process (`utilityProcess.fork`, service name `Multiclient runtime`). Owns SQLite, provider adapters, terminals, research, artifacts, and workspace tools. |
+| Claude permission bridge | `src/bridges/claude-permissions/index.ts`           | Local socket helper. Forwards approval requests; denies them when the host is unavailable.                                                                                 |
+| Workspace tools bridge   | `src/bridges/workspace-tools/index.ts`              | JSON-RPC helper for folder-project tools.                                                                                                                                  |
+| Research parser worker   | `src/runtime/research/parser-worker.ts`             | Bounded HTML/PDF extraction.                                                                                                                                               |
+| Diagram preview          | `src/renderer/artifact-diagram.ts`                  | Separate restricted window. Bundled to `out/main/artifact-diagram.js`. No Node, scripts, navigation, or network.                                                           |
+| Windows supervisor       | `src/main/native/RuntimeSupervisor.cs`              | C# Job Object helper. Windows only. See below.                                                                                                                             |
 
 `src/main/runtime.ts` (`RuntimeHost`) starts the utility process, forwards events to the renderer, and asks main for secrets. On Windows it enrolls that process in the C# supervisor before provider work. Elsewhere, exit cleanup uses `terminateProcessGroups` in `src/main/supervisor.ts`. A fatal runtime exit rejects pending calls, closes owned provider processes, and attempts one automatic recovery. Nothing replays a prompt, research request, command, or approval.
 
@@ -32,22 +32,22 @@ Provider CLIs (Codex stdio JSON-RPC, Claude Code NDJSON, Cursor ACP) and the use
 
 ## Directories
 
-| Path | What belongs here |
-| --- | --- |
-| `src/main` | Electron main process. Includes `secrets.ts`, `runtime.ts`, `supervisor.ts`, `artifacts.ts`, `history.ts`, `media.ts`, `clipboard.ts`, `native/`. |
-| `src/preload` | Desktop API. Feature factories live in `src/preload/features/`. |
-| `src/renderer` | UI: `features/`, `components/`, `appearance/`, `state.ts`. No Node and no direct IPC. |
-| `src/runtime` | Utility-process domain code: `storage/`, `conversations/`, `providers/`, `files/`, `git/`, `terminals/`, `context/`, `memory/`, `research/`, `artifacts/`, `organization/`, `comparison/`, `permissions/`, `transports/`. |
-| `src/shared` | Zod contracts and types (`schema.ts`, `types.ts`, `defaults.ts`, feature modules). No Electron, no React, no SQL. |
-| `src/bridges` | Out-of-process helpers compiled as extra main-process inputs. |
-| `migrations` | Additive SQLite migrations. Applied by numeric version inside a transaction. Numbers need not be contiguous (there is no `006`). Current highest version is 9. |
-| `tests/unit`, `tests/contracts` | Vitest. Default `npm test`. |
-| `tests/integration` | Node harnesses compiled by electron-vite and launched by `scripts/test-*.cjs` after a build. |
-| `tests/e2e` | Playwright against the Electron app. |
-| `tests/live` | Opt-in live provider tests (`vitest.live.config.ts`). Not part of `npm test` or CI. |
-| `scripts` | Native rebuild, supervisor compile, diagram bundle, integration runners. |
-| `resources` | App icons (`icon.png`, `icon.ico`, `icon.svg`). |
-| `docs` | User guide, architecture, contributing, provider compatibility. |
+| Path                            | What belongs here                                                                                                                                                                                                         |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/main`                      | Electron main process. Includes `secrets.ts`, `runtime.ts`, `supervisor.ts`, `artifacts.ts`, `history.ts`, `media.ts`, `clipboard.ts`, `native/`.                                                                         |
+| `src/preload`                   | Desktop API. Feature factories live in `src/preload/features/`.                                                                                                                                                           |
+| `src/renderer`                  | UI: `features/`, `components/`, `appearance/`, `state.ts`. No Node and no direct IPC.                                                                                                                                     |
+| `src/runtime`                   | Utility-process domain code: `storage/`, `conversations/`, `providers/`, `files/`, `git/`, `terminals/`, `context/`, `memory/`, `research/`, `artifacts/`, `organization/`, `comparison/`, `permissions/`, `transports/`. |
+| `src/shared`                    | Zod contracts and types (`schema.ts`, `types.ts`, `defaults.ts`, feature modules). No Electron, no React, no SQL.                                                                                                         |
+| `src/bridges`                   | Out-of-process helpers compiled as extra main-process inputs.                                                                                                                                                             |
+| `migrations`                    | Additive SQLite migrations. Applied by numeric version inside a transaction. Numbers need not be contiguous (there is no `006`). Current highest version is 9.                                                            |
+| `tests/unit`, `tests/contracts` | Vitest. Default `npm test`.                                                                                                                                                                                               |
+| `tests/integration`             | Node harnesses compiled by electron-vite and launched by `scripts/test-*.cjs` after a build.                                                                                                                              |
+| `tests/e2e`                     | Playwright against the Electron app.                                                                                                                                                                                      |
+| `tests/live`                    | Opt-in live provider tests (`vitest.live.config.ts`). Not part of `npm test` or CI.                                                                                                                                       |
+| `scripts`                       | Native rebuild, supervisor compile, diagram bundle, integration runners.                                                                                                                                                  |
+| `resources`                     | App icons (`icon.png`, `icon.ico`, `icon.svg`).                                                                                                                                                                           |
+| `docs`                          | User guide, architecture, contributing, provider compatibility.                                                                                                                                                           |
 
 electron-vite (`electron.vite.config.ts`) builds main, preload, and renderer separately. Main inputs include the runtime, both bridges, the research worker, and the integration harnesses. Packaged output is `out/`; the Windows release archive is `release/Multiclient-win-x64.zip`. `electron-builder.yml` sets `publish: null`.
 
@@ -76,13 +76,13 @@ npm test
 npm run test:e2e
 ```
 
-| Script | Exact command | What it does |
-| --- | --- | --- |
-| Install | `npm ci` | Clean install from `package-lock.json`, then `scripts/native.cjs` (Linux `node-pty` rebuild only). |
-| Dev | `npm run dev` | `electron-vite dev`. |
-| Build | `npm run build` | `tsc --noEmit && electron-vite build && node scripts/build-artifact-renderer.cjs && node scripts/build-supervisor.cjs`. The C# step no-ops off Windows. |
-| Unit tests | `npm test` | `vitest run`. Includes `tests/unit/**/*.test.ts` and `tests/contracts/**/*.test.ts`. Timeout 10s, max 2 workers (`vitest.config.ts`). |
-| End to end | `npm run test:e2e` | `npm run build && playwright test`. Specs in `tests/e2e`, 1 worker, 60s timeout (`playwright.config.ts`). |
+| Script     | Exact command      | What it does                                                                                                                                            |
+| ---------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Install    | `npm ci`           | Clean install from `package-lock.json`, then `scripts/native.cjs` (Linux `node-pty` rebuild only).                                                      |
+| Dev        | `npm run dev`      | `electron-vite dev`.                                                                                                                                    |
+| Build      | `npm run build`    | `tsc --noEmit && electron-vite build && node scripts/build-artifact-renderer.cjs && node scripts/build-supervisor.cjs`. The C# step no-ops off Windows. |
+| Unit tests | `npm test`         | `vitest run`. Includes `tests/unit/**/*.test.ts` and `tests/contracts/**/*.test.ts`. Timeout 10s, max 2 workers (`vitest.config.ts`).                   |
+| End to end | `npm run test:e2e` | `npm run build && playwright test`. Specs in `tests/e2e`, 1 worker, 60s timeout (`playwright.config.ts`).                                               |
 
 Related commands that already exist:
 
@@ -94,11 +94,11 @@ npm run check
 
 `npm run typecheck` is `tsc --noEmit`. `npm run format:check` is Prettier (`src`, `tests`, `scripts`, root `*.ts` / `*.json` / `*.yml`, `docs`, `README.md`, `SECURITY.md`, and `THIRD_PARTY_NOTICES.md`). `npm run check` is the local full gate: typecheck, unit/contract tests, production build, `node scripts/test-storage.cjs`, `test-history.cjs`, `test-features.cjs`, `test-comparison.cjs`, `test-artifacts.cjs`, `test-web-worker.cjs`, and `playwright test`. Shortcuts that build first are `npm run test:storage`, `test:history`, `test:features`, `test:comparison`, `test:artifacts`, and `test:e2e`.
 
-GitHub Actions (`.github/workflows/ci.yml`, job `verify`) runs those pieces as separate steps on `ubuntu-latest`, `windows-latest`, and `macos-latest` through `bash scripts/ci-step.sh`. On Linux that wrapper starts Xvfb (`-screen 0 1600x1200x24`) and Openbox. Xvfb alone does not implement EWMH, so `BrowserWindow.maximize()` would not report maximized. Linux CI also sets `node_modules/electron/dist/chrome-sandbox` to owner root and mode `4755` before the steps. The workflow does not call a single `npm run check` process. There is no `npm run verify` script on this branch.
+GitHub Actions (`.github/workflows/ci.yml`, job `verify`) runs those pieces as separate steps on `ubuntu-latest`, `windows-latest`, and `macos-latest` through `bash scripts/ci-step.sh`. On Linux that wrapper starts Xvfb (`-screen 0 1600x1200x24`) and Openbox. Xvfb alone does not implement EWMH, so `BrowserWindow.maximize()` would not report maximized. Linux CI also sets `node_modules/electron/dist/chrome-sandbox` to owner root and mode `4755` before the steps. The workflow does not call a single `npm run check` process. `npm run verify` runs the same core pieces locally as one chain: `typecheck`, `lint` (`format:check`), unit tests, and `build`.
 
 ### Desktop verification skill
 
-`.cursor/skills/verify-multiclient` drives a local send, a theme change, and history search. It is not in this branch. It is on the agent-config branch (pull request #1). When that directory is present, after `npm ci` and `npm run build`, and after the Linux chrome-sandbox mode above:
+`.cursor/skills/verify-multiclient` drives a local send, a theme change, and history search. It is not on `main` yet; pull request #29 adds it. When that directory is present, after `npm ci` and `npm run build`, and after the Linux chrome-sandbox mode above:
 
 ```sh
 node .cursor/skills/verify-multiclient/scripts/verify.mjs doctor
