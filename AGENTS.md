@@ -4,7 +4,7 @@ Multiclient is a local-first Windows desktop client for AI conversations and pro
 
 ## Agent rule
 
-Agents push, open or update the PR, and end their turn. Do not poll or wait on CI; the reviewer checks CI.
+Agents push, open a ready (non-draft) PR or update the existing one, and end their turn. CI skips draft PRs. Do not poll or wait on CI; the reviewer checks CI.
 
 ## Processes (entry points)
 
