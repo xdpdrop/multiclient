@@ -209,34 +209,31 @@ describe('official protocol adapter boundaries (synthetic peers)', () => {
       await rm(parent, { recursive: true, force: true });
     }
   });
-  it.skipIf(process.platform === 'win32')(
-    'codex accepts a workspace path whose symlink cwd differs from process.cwd()',
-    async () => {
-      const real = await mkdtemp(join(tmpdir(), 'multiclient-codex-real-'));
-      const linkParent = await mkdtemp(join(tmpdir(), 'multiclient-codex-link-'));
-      const link = join(linkParent, 'workspace');
-      await symlink(real, link);
-      const context: AdapterContext = {
-        cwd: link,
-        dataDir: real,
-        bridgePath: '',
-        executable: 'codex',
-        connection: connections.find((c) => c.id === 'codex')!,
-        signal: new AbortController().signal,
-        emit: () => {},
-        interact: async () => ({ id: 'fixture', allow: true }),
-      };
-      const connection = new CodexConnection(context);
-      try {
-        await connection.initialize();
-        await expect(connection.openSession({})).resolves.toEqual({ nativeId: 'codex-native' });
-      } finally {
-        await connection.close();
-        await rm(linkParent, { recursive: true, force: true });
-        await rm(real, { recursive: true, force: true });
-      }
-    },
-  );
+  it('codex accepts a workspace path whose symlink cwd differs from process.cwd()', async () => {
+    const real = await mkdtemp(join(tmpdir(), 'multiclient-codex-real-'));
+    const linkParent = await mkdtemp(join(tmpdir(), 'multiclient-codex-link-'));
+    const link = join(linkParent, 'workspace');
+    await symlink(real, link);
+    const context: AdapterContext = {
+      cwd: link,
+      dataDir: real,
+      bridgePath: '',
+      executable: 'codex',
+      connection: connections.find((c) => c.id === 'codex')!,
+      signal: new AbortController().signal,
+      emit: () => {},
+      interact: async () => ({ id: 'fixture', allow: true }),
+    };
+    const connection = new CodexConnection(context);
+    try {
+      await connection.initialize();
+      await expect(connection.openSession({})).resolves.toEqual({ nativeId: 'codex-native' });
+    } finally {
+      await connection.close();
+      await rm(linkParent, { recursive: true, force: true });
+      await rm(real, { recursive: true, force: true });
+    }
+  });
   it('Codex interrupts through the protocol and rejects the unfinished turn', async () => {
     const context: AdapterContext = {
       cwd: process.cwd(),
