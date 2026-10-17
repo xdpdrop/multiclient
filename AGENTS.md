@@ -6,6 +6,10 @@ Multiclient is a local-first Windows desktop client for AI conversations and pro
 
 Agents push, open a ready (non-draft) PR or update the existing one, and end their turn. CI skips draft PRs. Do not poll or wait on CI; the reviewer checks CI.
 
+## Models
+
+Grok only. Ladder, one try per rung before stepping up: `composer-2.5` (trivial) → `grok-4.7-medium` (default) → `grok-4.7-high` (hardest). If `grok-4.7-high` fails, report blocked. No third-party models (Claude, GPT, Gemini, etc.) without Marek's explicit approval for that specific task.
+
 ## Processes (entry points)
 
 Hard trust split: the renderer cannot reach Node, Electron, or SQLite.
@@ -38,7 +42,7 @@ IPC contracts: [src/shared/AGENTS.md](src/shared/AGENTS.md). Build and CI script
 | `electron.vite.config.ts` | Builds main, preload, renderer (main includes runtime, bridges, workers) |
 | `electron-builder.yml`    | Packaging; `publish: null`                                               |
 
-Packaged build output is `out/`. Do not commit `out/`, `release/`, credentials, `.env`, local DBs, or Playwright report dirs.
+Packaged build output is `out/`. Do not commit `out/`, `release/`, credentials, `.env` secrets, local databases, raw provider transcripts, or Playwright output (`test-results/`, `test-results-*`, `playwright-report/`).
 
 ## Commands
 
@@ -58,7 +62,7 @@ Other scripts: `npm run dev`, `npm test`, `npm run test:e2e`, `npm run check` (f
 ## Conventions
 
 - Prettier (`.prettierrc.json`): single quotes, semicolons, trailing commas, width 100. No ESLint.
-- Source is Elastic License 2.0 (`LICENSE`). Do not relicense.
+- Source is Elastic License 2.0 (`LICENSE`). Do not relicense. Release tags from before the license change remain MIT.
 - Stay in the subsystem you change; see nested `AGENTS.md` for import and SQL boundaries.
 - Migrations are additive only ([migrations/AGENTS.md](migrations/AGENTS.md)).
 - Windows x64 is the primary ship target; preview builds are unsigned with no auto-update.
