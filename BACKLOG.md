@@ -15,6 +15,7 @@ Sizes: tiny is a sentence or one file, small is a focused change, medium crosses
 - The verify-multiclient skill is on `main` at `.cursor/skills/verify-multiclient/` (doctor, send, theme, history search), without the vendored skills from #1. [Pull request #29](https://github.com/xdpdrop/multiclient/pull/29), merged.
 - `AGENTS.md` documents `npm run verify` and the verify skill, `format:check` includes `AGENTS.md`, and the implementation status and validation record describe the public remote and the CI runs. [Pull request #30](https://github.com/xdpdrop/multiclient/pull/30), merged.
 - CI runs on pushes to `main`, `v*` tags, and pull requests, skips docs-only changes (`**/*.md`, `docs/**`), and cancels superseded pull request runs. [Pull request #31](https://github.com/xdpdrop/multiclient/pull/31), merged.
+- `format:check` covers `.cursor/skills/verify-multiclient/` and `BACKLOG.md`. [Pull request #35](https://github.com/xdpdrop/multiclient/pull/35).
 
 ## Bugs
 
@@ -31,7 +32,7 @@ Sizes: tiny is a sentence or one file, small is a focused change, medium crosses
 
 ## Agent-friendliness
 
-- The verify skill files under `.cursor/skills/verify-multiclient/` are outside the `format:check` globs in [`package.json`](https://github.com/xdpdrop/multiclient/blob/dd0dcd207bccbad5712508050c8213e6e3644f35/package.json); #29 checked them with Prettier by hand. `BACKLOG.md` is also outside those globs. Size: tiny.
+None open.
 
 ## Deps
 
