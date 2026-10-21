@@ -53,7 +53,6 @@ type ImportedAttachment = {
 
 type PdfjsModule = typeof import('pdfjs-dist/legacy/build/pdf.mjs');
 let pdfjsModule: Promise<PdfjsModule> | undefined;
-let canvasRequireBlocked = false;
 
 // 2D matrix used by pdf.js for Type3 glyph outlines. Text positions themselves
 // stay on pdf.js's own number arrays; this only replaces the canvas polyfill.
@@ -102,9 +101,12 @@ function installPdfTextGlobals() {
   const scope = globalThis as unknown as Record<string, unknown>;
   scope.DOMMatrix ??= PdfTextMatrix;
   scope.Path2D ??= class PdfTextPath2D {};
-  if (canvasRequireBlocked) return;
-  // The legacy build require()s @napi-rs/canvas while the module evaluates, even
-  // when DOMMatrix and Path2D are already present. Text extraction never renders.
+}
+
+// The legacy build require()s the canvas addon while the module evaluates, even
+// when DOMMatrix and Path2D are already present. Text extraction never renders.
+// The hook covers only that import so later requires in the process see the real addon.
+async function importPdfjs(): Promise<PdfjsModule> {
   const nodeRequire = createRequire(typeof __filename === 'string' ? __filename : import.meta.url);
   const moduleApi = nodeRequire('module') as {
     prototype: { require: (this: unknown, id: string) => unknown };
@@ -114,13 +116,25 @@ function installPdfTextGlobals() {
     if (id === '@napi-rs/canvas') return {};
     return original.call(this, id);
   };
-  canvasRequireBlocked = true;
+  try {
+    return await import('pdfjs-dist/legacy/build/pdf.mjs');
+  } finally {
+    moduleApi.prototype.require = original;
+  }
 }
 
 function loadPdfjs() {
   if (!pdfjsModule) {
     installPdfTextGlobals();
-    pdfjsModule = import('pdfjs-dist/legacy/build/pdf.mjs');
+    let pending: Promise<PdfjsModule> | undefined;
+    pending = importPdfjs().then(
+      (loaded) => loaded,
+      (error: unknown) => {
+        if (pdfjsModule === pending) pdfjsModule = undefined;
+        throw error;
+      },
+    );
+    pdfjsModule = pending;
   }
   return pdfjsModule;
 }

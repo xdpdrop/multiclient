@@ -99,6 +99,10 @@ describe('attachment capture', () => {
         (entry) => entry.includes('@napi-rs') && entry.includes('canvas'),
       );
       if (loaded.length) throw new Error('Loaded @napi-rs/canvas:\\n' + loaded.join('\\n'));
+      const canvas = nodeRequire('@napi-rs/canvas');
+      if (typeof canvas.createCanvas !== 'function') {
+        throw new Error('Module.prototype.require still replaces the canvas addon');
+      }
     `;
     await promisify(execFile)(process.execPath, ['--input-type=module', '-e', script], {
       timeout: 10000,
