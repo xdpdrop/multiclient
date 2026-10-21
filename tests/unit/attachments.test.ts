@@ -85,7 +85,25 @@ describe('attachment capture', () => {
     expect(imported.attachment.pages).toEqual([{ page: 1, text: 'Hello document' }]);
     expect(imported.attachment.content).toContain('[Page 1]');
     expect(imported.asset?.type).toBe('pdf');
-  }, 30000);
+  });
+  it('extracts PDF text without loading the canvas addon', async () => {
+    const script = `
+      import { createRequire } from 'node:module';
+      const { extractPdf } = await import(${JSON.stringify(pathToFileURL(resolve('src/runtime/files/attachments.ts')).href)});
+      const pages = await extractPdf(Uint8Array.from(Buffer.from(${JSON.stringify(pdf().toString('base64'))}, 'base64')));
+      if (pages.length !== 1 || pages[0].text !== 'Hello document') {
+        throw new Error('PDF text mismatch: ' + JSON.stringify(pages));
+      }
+      const nodeRequire = createRequire(import.meta.url);
+      const loaded = [...Object.keys(nodeRequire.cache), ...(process.moduleLoadList ?? [])].filter(
+        (entry) => entry.includes('@napi-rs') && entry.includes('canvas'),
+      );
+      if (loaded.length) throw new Error('Loaded @napi-rs/canvas:\\n' + loaded.join('\\n'));
+    `;
+    await promisify(execFile)(process.execPath, ['--input-type=module', '-e', script], {
+      timeout: 10000,
+    });
+  });
   it('retains imported image and PDF bytes after the original files are deleted', async () => {
     const png = Buffer.from(
       'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a3mEAAAAASUVORK5CYII=',
