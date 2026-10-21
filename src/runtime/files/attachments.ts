@@ -51,8 +51,96 @@ type ImportedAttachment = {
   asset?: { id: string; mime: string; type: 'image' | 'pdf'; size: number; hash: string };
 };
 
+type PdfjsModule = typeof import('pdfjs-dist/legacy/build/pdf.mjs');
+let pdfjsModule: Promise<PdfjsModule> | undefined;
+
+// 2D matrix used by pdf.js for Type3 glyph outlines. Text positions themselves
+// stay on pdf.js's own number arrays; this only replaces the canvas polyfill.
+class PdfTextMatrix {
+  a = 1;
+  b = 0;
+  c = 0;
+  d = 1;
+  e = 0;
+  f = 0;
+  constructor(init?: unknown) {
+    const record =
+      init && typeof init === 'object' && !Array.isArray(init)
+        ? (init as Record<string, unknown>)
+        : undefined;
+    const values = Array.isArray(init)
+      ? init
+      : record
+        ? [record.a, record.b, record.c, record.d, record.e, record.f]
+        : undefined;
+    if (!values || values.length !== 6 || values.some((value) => typeof value !== 'number')) return;
+    [this.a, this.b, this.c, this.d, this.e, this.f] = values as [
+      number,
+      number,
+      number,
+      number,
+      number,
+      number,
+    ];
+  }
+  scaleSelf(x: number, y = x) {
+    this.a *= x;
+    this.b *= x;
+    this.c *= y;
+    this.d *= y;
+    return this;
+  }
+  translateSelf(x: number, y = 0) {
+    this.e += this.a * x + this.c * y;
+    this.f += this.b * x + this.d * y;
+    return this;
+  }
+}
+
+function installPdfTextGlobals() {
+  const scope = globalThis as unknown as Record<string, unknown>;
+  scope.DOMMatrix ??= PdfTextMatrix;
+  scope.Path2D ??= class PdfTextPath2D {};
+}
+
+// The legacy build require()s the canvas addon while the module evaluates, even
+// when DOMMatrix and Path2D are already present. Text extraction never renders.
+// The hook covers only that import so later requires in the process see the real addon.
+async function importPdfjs(): Promise<PdfjsModule> {
+  const nodeRequire = createRequire(typeof __filename === 'string' ? __filename : import.meta.url);
+  const moduleApi = nodeRequire('module') as {
+    prototype: { require: (this: unknown, id: string) => unknown };
+  };
+  const original = moduleApi.prototype.require;
+  moduleApi.prototype.require = function requireWithoutCanvas(this: unknown, id: string) {
+    if (id === '@napi-rs/canvas') return {};
+    return original.call(this, id);
+  };
+  try {
+    return await import('pdfjs-dist/legacy/build/pdf.mjs');
+  } finally {
+    moduleApi.prototype.require = original;
+  }
+}
+
+function loadPdfjs() {
+  if (!pdfjsModule) {
+    installPdfTextGlobals();
+    let pending: Promise<PdfjsModule> | undefined;
+    pending = importPdfjs().then(
+      (loaded) => loaded,
+      (error: unknown) => {
+        if (pdfjsModule === pending) pdfjsModule = undefined;
+        throw error;
+      },
+    );
+    pdfjsModule = pending;
+  }
+  return pdfjsModule;
+}
+
 export async function extractPdf(bytes: Uint8Array) {
-  const { getDocument, GlobalWorkerOptions } = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  const { getDocument, GlobalWorkerOptions } = await loadPdfjs();
   // PDF.js does not initialize its Node defaults inside Electron utility processes.
   const resolvePackage = createRequire(
     typeof __filename === 'string' ? __filename : import.meta.url,
