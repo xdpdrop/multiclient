@@ -89,6 +89,7 @@ describe('attachment capture', () => {
   it('extracts PDF text without loading the canvas addon', async () => {
     const script = `
       import { createRequire } from 'node:module';
+      const originalRequire = (await import('node:module')).default.prototype.require;
       const { extractPdf } = await import(${JSON.stringify(pathToFileURL(resolve('src/runtime/files/attachments.ts')).href)});
       const pages = await extractPdf(Uint8Array.from(Buffer.from(${JSON.stringify(pdf().toString('base64'))}, 'base64')));
       if (pages.length !== 1 || pages[0].text !== 'Hello document') {
@@ -99,8 +100,8 @@ describe('attachment capture', () => {
         (entry) => entry.includes('@napi-rs') && entry.includes('canvas'),
       );
       if (loaded.length) throw new Error('Loaded @napi-rs/canvas:\\n' + loaded.join('\\n'));
-      const canvas = nodeRequire('@napi-rs/canvas');
-      if (typeof canvas.createCanvas !== 'function') {
+      const Module = (await import('node:module')).default;
+      if (Module.prototype.require !== originalRequire) {
         throw new Error('Module.prototype.require still replaces the canvas addon');
       }
     `;
