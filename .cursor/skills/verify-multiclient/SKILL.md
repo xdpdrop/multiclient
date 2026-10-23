@@ -40,6 +40,8 @@ The full repository gate, which this drive does not replace, is:
 npm run check
 ```
 
+`npm run verify` (typecheck, lint, unit tests, build) also requires Node 24; older Node is refused before those steps run.
+
 Merge gates also run the CI run check after `npm run check`:
 `node scripts/ci-run-check.mjs --repo <owner/name> --run <run-id> [--gate <file>] [--sha <hex>]`.
 Gate reruns with `rerun-approval: <run-id> by Marek <YYYY-MM-DD>: "<quote>"`.
