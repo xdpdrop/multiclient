@@ -4,107 +4,74 @@ import { resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { fileURLToPath } from 'node:url';
 
+const RERUN_LINE_RE = /^rerun-approval: (\d+) by Marek (\d{4}-\d{2}-\d{2}): "(.+)"$/;
+const USAGE =
+  'Usage: node scripts/ci-run-check.mjs --repo <owner/name> --run <run-id> [--gate <path>] [--sha <prefix>]';
+
 export function parsePositiveRunIdText(text) {
-  if (typeof text !== 'string' || !/^\d+$/.test(text)) {
-    return null;
-  }
+  if (typeof text !== 'string' || !/^\d+$/.test(text)) return null;
   const value = Number(text);
-  if (!Number.isSafeInteger(value) || value <= 0 || String(value) !== text) {
-    return null;
-  }
+  if (!Number.isSafeInteger(value) || value <= 0 || String(value) !== text) return null;
   return value;
+}
+
+function validApprovalDate(iso) {
+  const [y, m, d] = iso.split('-').map(Number);
+  const date = new Date(y, m - 1, d);
+  return date.getFullYear() === y && date.getMonth() === m - 1 && date.getDate() === d;
 }
 
 export function parseRunPayload(payload) {
   if (payload === null || typeof payload !== 'object' || Array.isArray(payload)) {
     throw new Error('GitHub run payload must be a JSON object');
   }
-  const record = payload;
-  const id = record.id;
-  if (typeof id !== 'number' || !Number.isInteger(id) || id <= 0) {
+  const { id, run_attempt: runAttempt, status, conclusion, head_sha: headSha } = payload;
+  if (typeof id !== 'number' || !Number.isSafeInteger(id) || id <= 0) {
     throw new Error('GitHub run payload missing or invalid id');
   }
-  const runAttempt = record.run_attempt;
   if (typeof runAttempt !== 'number' || !Number.isInteger(runAttempt) || runAttempt < 1) {
     throw new Error('GitHub run payload missing or invalid run_attempt');
   }
-  const status = record.status;
-  if (typeof status !== 'string' || status.length === 0) {
+  if (typeof status !== 'string' || !status) {
     throw new Error('GitHub run payload missing or invalid status');
   }
-  const conclusion = record.conclusion;
   if (conclusion !== null && typeof conclusion !== 'string') {
     throw new Error('GitHub run payload has invalid conclusion');
   }
-  const headSha = record.head_sha;
-  if (typeof headSha !== 'string' || headSha.length === 0) {
+  if (typeof headSha !== 'string' || !headSha) {
     throw new Error('GitHub run payload missing or invalid head_sha');
   }
-  return {
-    id,
-    run_attempt: runAttempt,
-    status,
-    conclusion,
-    head_sha: headSha,
-  };
+  return { id, run_attempt: runAttempt, status, conclusion, head_sha: headSha };
 }
 
 export function parseRerunApprovalLine(line, expectedRunId) {
-  const prefix = 'rerun-approval: ';
-  if (!line.startsWith(prefix)) {
-    return false;
-  }
-  const afterPrefix = line.slice(prefix.length);
-  const spaceIndex = afterPrefix.indexOf(' ');
-  if (spaceIndex <= 0) {
-    return false;
-  }
-  const idText = afterPrefix.slice(0, spaceIndex);
-  const runId = parsePositiveRunIdText(idText);
-  if (runId === null || runId !== expectedRunId) {
-    return false;
-  }
-  const remainder = afterPrefix.slice(spaceIndex);
-  const approvalMatch = remainder.match(/^ by Marek (\d{4}-\d{2}-\d{2}): "(.+)"$/);
-  if (!approvalMatch || approvalMatch[2].length === 0) {
-    return false;
-  }
-  return true;
-}
-
-function hasRerunApproval(gateText, runId) {
-  return gateText.split('\n').some((line) => parseRerunApprovalLine(line, runId));
-}
-
-function formatConclusion(conclusion) {
-  return conclusion === null ? 'null' : conclusion;
+  const match = line.replace(/\r$/, '').match(RERUN_LINE_RE);
+  if (!match || !match[3] || !validApprovalDate(match[2])) return false;
+  const runId = parsePositiveRunIdText(match[1]);
+  return runId !== null && runId === expectedRunId;
 }
 
 export function evaluateRun({ run, gateText = '', shaPrefix }) {
   if (run.status !== 'completed') {
-    return {
-      ok: false,
-      reason: `run ${run.id} is not completed (status=${run.status})`,
-    };
+    return { ok: false, reason: `run ${run.id} is not completed (status=${run.status})` };
   }
-
   if (run.conclusion !== 'success') {
-    return {
-      ok: false,
-      reason: `run ${run.id} concluded ${formatConclusion(run.conclusion)}`,
-    };
+    const label = run.conclusion === null ? 'null' : run.conclusion;
+    return { ok: false, reason: `run ${run.id} concluded ${label}` };
   }
-
   if (shaPrefix !== undefined) {
-    if (!run.head_sha.startsWith(shaPrefix)) {
-      return {
-        ok: false,
-        reason: `run ${run.id} head_sha does not start with ${shaPrefix}`,
-      };
+    if (!shaPrefix || !/^[\da-f]+$/i.test(shaPrefix)) {
+      return { ok: false, reason: 'invalid sha prefix' };
+    }
+    const prefix = shaPrefix.toLowerCase();
+    if (!run.head_sha.toLowerCase().startsWith(prefix)) {
+      return { ok: false, reason: `run ${run.id} head_sha does not start with ${prefix}` };
     }
   }
-
-  if (run.run_attempt > 1 && !hasRerunApproval(gateText, run.id)) {
+  if (
+    run.run_attempt > 1 &&
+    !gateText.split('\n').some((line) => parseRerunApprovalLine(line, run.id))
+  ) {
     return {
       ok: false,
       reason:
@@ -112,16 +79,10 @@ export function evaluateRun({ run, gateText = '', shaPrefix }) {
         `"rerun-approval: ${run.id} by Marek <YYYY-MM-DD>: \\"<quote>\\""`,
     };
   }
-
-  const sha7 = run.head_sha.slice(0, 7);
   return {
     ok: true,
-    reason: `PASS run ${run.id} attempt ${run.run_attempt} ${run.conclusion} ${sha7}`,
+    reason: `PASS run ${run.id} attempt ${run.run_attempt} ${run.conclusion} ${run.head_sha.slice(0, 7)}`,
   };
-}
-
-function usageMessage() {
-  return 'Usage: node scripts/ci-run-check.mjs --repo <owner/name> --run <run-id> [--gate <gate-file-path>] [--sha <prefix>]';
 }
 
 function exitError(message) {
@@ -129,16 +90,10 @@ function exitError(message) {
   process.exit(2);
 }
 
-function lastLine(text) {
-  const lines = text.trim().split('\n').filter(Boolean);
-  return lines.length > 0 ? lines[lines.length - 1] : 'gh command failed';
-}
-
 export function fetchRunFromGh(repo, runId) {
-  const endpoint = `repos/${repo}/actions/runs/${runId}`;
   let stdout;
   try {
-    stdout = execFileSync('gh', ['api', endpoint], {
+    stdout = execFileSync('gh', ['api', `repos/${repo}/actions/runs/${runId}`], {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -147,21 +102,17 @@ export function fetchRunFromGh(repo, runId) {
       error && typeof error === 'object' && 'stderr' in error && typeof error.stderr === 'string'
         ? error.stderr
         : '';
-    throw new Error(lastLine(stderr));
+    const lines = stderr.trim().split('\n').filter(Boolean);
+    throw new Error(lines.at(-1) ?? 'gh command failed');
   }
-  let raw;
   try {
-    raw = JSON.parse(stdout);
-  } catch {
-    throw new Error('GitHub run response was not valid JSON');
+    return parseRunPayload(JSON.parse(stdout));
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      throw new Error('GitHub run response was not valid JSON');
+    }
+    throw error;
   }
-  return parseRunPayload({
-    id: raw.id,
-    run_attempt: raw.run_attempt,
-    status: raw.status,
-    conclusion: raw.conclusion,
-    head_sha: raw.head_sha,
-  });
 }
 
 function main() {
@@ -180,14 +131,8 @@ function main() {
     exitError(error instanceof Error ? error.message : 'invalid arguments');
   }
 
-  if (!values.repo || !values.run) {
-    exitError(usageMessage());
-  }
-
-  const runId = parsePositiveRunIdText(values.run);
-  if (runId === null) {
-    exitError(usageMessage());
-  }
+  const runId = values.run ? parsePositiveRunIdText(values.run) : null;
+  if (!values.repo || runId === null) exitError(USAGE);
 
   let gateText = '';
   if (values.gate) {
@@ -198,8 +143,8 @@ function main() {
     }
   }
 
-  if (values.sha !== undefined && values.sha.length < 7) {
-    exitError('sha prefix must be at least 7 characters');
+  if (values.sha !== undefined && (values.sha.length < 7 || !/^[\da-f]+$/i.test(values.sha))) {
+    exitError('sha prefix must be at least 7 hexadecimal characters');
   }
 
   let run;
@@ -223,18 +168,12 @@ function main() {
 }
 
 function shouldRunMain() {
-  if (!process.argv[1]) {
-    return true;
-  }
+  if (!process.argv[1]) return true;
   try {
-    const scriptPath = realpathSync(fileURLToPath(import.meta.url));
-    const argvPath = realpathSync(resolve(process.argv[1]));
-    return scriptPath === argvPath;
+    return realpathSync(fileURLToPath(import.meta.url)) === realpathSync(resolve(process.argv[1]));
   } catch {
     return true;
   }
 }
 
-if (shouldRunMain()) {
-  main();
-}
+if (shouldRunMain()) main();
