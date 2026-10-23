@@ -6,12 +6,16 @@
   "license": "Elastic-2.0",
   "private": true,
   "main": "out/main/index.js",
+  "engines": {
+    "node": ">=24"
+  },
   "scripts": {
     "dev": "electron-vite dev",
     "build": "tsc --noEmit && electron-vite build && node scripts/build-artifact-renderer.cjs && node scripts/build-supervisor.cjs",
     "start": "electron-vite preview",
     "typecheck": "tsc --noEmit",
     "lint": "npm run format:check",
+    "preverify": "node scripts/check-node.mjs",
     "verify": "npm run typecheck && npm run lint && npm test && npm run build",
     "test": "vitest run",
     "test:e2e": "npm run build && playwright test",

@@ -57,7 +57,7 @@ Requires Node.js 24, npm, and Git. Use the committed lockfile.
 | Build       | `npm run build`                             |
 | Quiet check | `bash scripts/check.sh`                     |
 
-Other scripts: `npm run dev`, `npm test`, `npm run test:e2e`, `npm run check` (full local gate including integration harnesses and Playwright). See [scripts/AGENTS.md](scripts/AGENTS.md).
+Other scripts: `npm run dev`, `npm test`, `npm run test:e2e`, `npm run verify` (typecheck, lint, unit tests, and build; requires Node 24 — `preverify` refuses older Node), `npm run check` (full local gate including integration harnesses and Playwright). See [scripts/AGENTS.md](scripts/AGENTS.md).
 
 ## Conventions
 
