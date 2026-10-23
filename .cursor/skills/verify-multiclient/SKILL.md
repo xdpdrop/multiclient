@@ -40,6 +40,12 @@ The full repository gate, which this drive does not replace, is:
 npm run check
 ```
 
+Merge gates should also reject manual CI reruns unless the gate file documents approval:
+
+```sh
+node scripts/ci-run-check.mjs --repo <owner/name> --run <run-id> [--gate <gate-file-path>]
+```
+
 ## Doctor
 
 ```sh
