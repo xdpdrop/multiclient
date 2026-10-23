@@ -26,6 +26,7 @@
     "dist:win": "npm run build && electron-builder --win zip --x64 --publish never",
     "postinstall": "node scripts/native.cjs",
     "probe": "node scripts/probe.mjs",
+    "ci:run-check": "node scripts/ci-run-check.mjs",
     "format": "prettier --write src tests scripts *.ts *.json *.yml docs .cursor/skills/verify-multiclient AGENTS.md BACKLOG.md README.md SECURITY.md THIRD_PARTY_NOTICES.md",
     "format:check": "prettier --check src tests scripts *.ts *.json *.yml docs .cursor/skills/verify-multiclient AGENTS.md BACKLOG.md README.md SECURITY.md THIRD_PARTY_NOTICES.md"
   },
