@@ -20,6 +20,12 @@ run_step() {
   exit 1
 }
 
+models_line() {
+  grep -F "Grok only" AGENTS.md | grep -F "one try per rung" | grep -F "Marek's explicit approval" >/dev/null \
+    || { echo "AGENTS.md needs one Models line containing: Grok only, one try per rung, Marek's explicit approval"; return 1; }
+}
+
+run_step models-line models_line
 run_step typecheck npm run typecheck
 run_step lint npm run lint
 run_step test npm test
