@@ -9,12 +9,12 @@ type Run = {
   head_sha: string;
 };
 
-const { evaluateRun, parsePositiveRunIdText, parseRerunApprovalLine, parseRunPayload } =
-  createRequire(import.meta.url)('../../scripts/ci-run-check.mjs') as {
-    evaluateRun: (input: { run: Run; gateText?: string; shaPrefix?: string }) => {
-      ok: boolean;
-      reason: string;
-    };
+const importedCiRunCheckApi = createRequire(import.meta.url)('../../scripts/ci-run-check.mjs');
+const realEvaluateRun = importedCiRunCheckApi.evaluateRun;
+const evaluateRun = (input: object) =>
+  realEvaluateRun({ headSubject: 'Refresh the gate', ...input });
+const { parsePositiveRunIdText, parseRerunApprovalLine, parseRunPayload } =
+  importedCiRunCheckApi as {
     parsePositiveRunIdText: (text: string) => number | null;
     parseRerunApprovalLine: (line: string, expectedRunId: number) => boolean;
     parseRunPayload: (payload: unknown) => Run;
@@ -121,5 +121,13 @@ describe('evaluateRun', () => {
 
   it('rejects empty sha prefix', () => {
     expect(evaluateRun({ run, shaPrefix: '' }).ok).toBe(false);
+  });
+
+  it('fails closed without a head subject and on every CI skip token', () => {
+    expect(realEvaluateRun({ run }).ok).toBe(false);
+    for (const token of ['[skip ci]', '[ci skip]', '[no ci]', '[skip actions]', '[actions skip]'])
+      expect(realEvaluateRun({ run, headSubject: token.toUpperCase() }).ok).toBe(false);
+    expect(evaluateRun({ run }).ok).toBe(true);
+    expect(evaluateRun({ run: { ...run, conclusion: 'failure' } }).ok).toBe(false);
   });
 });

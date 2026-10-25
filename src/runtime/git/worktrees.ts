@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, realpath, unlink, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
 import { basename, dirname, join, resolve } from 'node:path';
 import { z } from 'zod';
-import { contained } from '../files';
+import { contained, toCanonicalPath } from '../files';
 import { childEnvironment, exec, findExecutable } from '../providers/process';
 
 const metadataSchema = z
@@ -17,17 +17,17 @@ const metadataSchema = z
 export type ManagedWorktree = z.infer<typeof metadataSchema>;
 
 async function environment(projectPath: string, dataDir: string) {
-  const project = await realpath(projectPath);
+  const project = await toCanonicalPath(projectPath);
   const executable = await findExecutable('git', '', project);
-  const data = await realpath(dataDir);
+  const data = await toCanonicalPath(dataDir);
   const directory = join(data, 'worktrees');
   await mkdir(directory, { recursive: true, mode: 0o700 });
-  const root = await realpath(directory);
+  const root = await toCanonicalPath(directory);
   if (!contained(data, root))
     throw new Error('Managed workspace storage is outside the application data directory.');
   const hooks = join(root, '.disabled-hooks');
   await mkdir(hooks, { recursive: true, mode: 0o700 });
-  if (!contained(root, await realpath(hooks)))
+  if (!contained(root, await toCanonicalPath(hooks)))
     throw new Error('Managed workspace hook configuration is invalid.');
   const run = async (cwd: string, args: string[]) => {
     const { stdout } = await exec(
@@ -43,7 +43,7 @@ async function environment(projectPath: string, dataDir: string) {
     );
     return stdout.replace(/\r?\n$/, '');
   };
-  const sourcePath = await realpath(await run(project, ['rev-parse', '--show-toplevel']));
+  const sourcePath = await toCanonicalPath(await run(project, ['rev-parse', '--show-toplevel']));
   return { root, sourcePath, run };
 }
 
@@ -84,7 +84,7 @@ export async function removeManagedWorktree(
   dataDir: string,
 ) {
   const { root, sourcePath, run } = await environment(projectPath, dataDir);
-  const path = await realpath(worktreePath);
+  const path = await toCanonicalPath(worktreePath);
   const id = basename(path);
   if (!/^[a-f0-9-]{36}$/i.test(id) || dirname(path) !== root || resolve(worktreePath) !== path)
     throw new Error('Only an application-owned managed workspace can be removed.');

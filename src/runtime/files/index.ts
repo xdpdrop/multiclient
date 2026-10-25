@@ -1,15 +1,37 @@
 import { realpath, readdir, stat, open } from 'node:fs/promises';
-import { isAbsolute, relative, resolve } from 'node:path';
-export function contained(root: string, target: string) {
+import { dirname, isAbsolute, relative, resolve } from 'node:path';
+
+export type CanonicalPath = string & { readonly __brand: 'CanonicalPath' };
+
+export async function toCanonicalPath(path: string): Promise<CanonicalPath> {
+  return (await realpath(path)) as CanonicalPath;
+}
+
+export async function toCanonicalPathOrAncestor(path: string): Promise<CanonicalPath> {
+  let current = resolve(path);
+  for (;;) {
+    try {
+      return await toCanonicalPath(current);
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code !== 'ENOENT' && code !== 'ENOTDIR') throw error;
+      const parent = dirname(current);
+      if (parent === current) throw error;
+      current = parent;
+    }
+  }
+}
+
+export function contained(root: CanonicalPath, target: CanonicalPath) {
   const rel = relative(root, target);
   return (
     rel === '' ||
     (!isAbsolute(rel) && rel !== '..' && !rel.startsWith('..\\') && !rel.startsWith('../'))
   );
 }
-export async function workspacePath(root: string, input: string) {
-  const base = await realpath(root);
-  const target = await realpath(resolve(base, input || '.'));
+export async function workspacePath(root: string, input: string): Promise<CanonicalPath> {
+  const base = await toCanonicalPath(root);
+  const target = await toCanonicalPath(resolve(base, input || '.'));
   if (!contained(base, target)) throw new Error('Path is outside this workspace.');
   return target;
 }
@@ -48,8 +70,8 @@ export async function readText(root: string, input: string) {
     await handle.close();
   }
 }
-export async function canonicalDirectory(path: string) {
-  const value = await realpath(path);
+export async function canonicalDirectory(path: string): Promise<CanonicalPath> {
+  const value = await toCanonicalPath(path);
   if (!(await stat(value)).isDirectory()) throw new Error('Choose a directory.');
   return value;
 }

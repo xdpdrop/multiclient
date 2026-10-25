@@ -44,8 +44,8 @@ npm run check
 
 Merge gates also run the CI run check after `npm run check`:
 `node scripts/ci-run-check.mjs --repo <owner/name> --run <run-id> [--gate <file>] [--sha <hex>]`.
-Gate reruns with `rerun-approval: <run-id> by Marek <YYYY-MM-DD>: "<quote>"`.
-Only `success` conclusions pass; reruns need that line in `--gate`.
+The head commit subject must not contain `[skip ci]` (earlier commits may). Gate reruns with `rerun-approval: <run-id> by Marek <YYYY-MM-DD>: "<quote>"`.
+Only `success` conclusions pass; reruns need that line in `--gate`. CI verify runs Lint (`npm run lint` via `scripts/ci-step.sh`) before Typecheck.
 
 ## Doctor
 

@@ -4,8 +4,10 @@ import { mkdtemp, mkdir, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
-test('live Codex Code approval changes a file through the desktop', async () => {
-  test.skip(process.env.MULTICLIENT_LIVE_DESKTOP !== '1', 'Opt-in subscription test only.');
+const liveDesktop = (title: string, fn: () => Promise<void>) => {
+  if (process.env.MULTICLIENT_LIVE_DESKTOP === '1') test(title, fn);
+};
+liveDesktop('live Codex Code approval changes a file through the desktop', async () => {
   test.setTimeout(120000);
   const data = await mkdtemp(join(tmpdir(), 'multiclient-desktop-code-'));
   const project = join(data, 'disposable project');

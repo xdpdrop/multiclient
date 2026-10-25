@@ -44,7 +44,12 @@ async function tree() {
   }
 }
 
-describe.skipIf(process.platform !== 'win32')('Windows kill-on-close job supervision', () => {
+describe('Windows kill-on-close job supervision', () => {
+  if (process.platform !== 'win32') {
+    it('fails closed when no supervisor can be started', () =>
+      expect(new WindowsJobSupervisor('missing').attach(1)).rejects.toThrow(/protect the runtime/));
+    return;
+  }
   beforeAll(async () => {
     await exec(process.execPath, [resolve('scripts/build-supervisor.cjs')], { windowsHide: true });
   });

@@ -12,13 +12,12 @@ import { ArtifactsStore, linkArtifactRevision } from '../../src/runtime/artifact
 import { validateDatabase } from '../../src/runtime/storage/backup';
 import type { ComparisonInput } from '../../src/shared/comparison';
 import type { Attachment } from '../../src/shared/types';
+import { waitFor } from '../wait-for';
 
 async function settle(coordinator: Coordinator) {
-  const until = Date.now() + 5000;
-  while (coordinator.activeTurns().length) {
-    if (Date.now() > until) throw new Error('Comparison fixture did not finish.');
-    await new Promise((resolve) => setTimeout(resolve, 5));
-  }
+  await waitFor(() => coordinator.activeTurns().length === 0, 5000).catch(() => {
+    throw new Error('Comparison fixture did not finish.');
+  });
 }
 async function main() {
   const directory = await mkdtemp(join(tmpdir(), 'multiclient-comparison-'));
@@ -226,11 +225,9 @@ async function main() {
     };
     const cancellation = await service.prepare({ ...input, requestId: randomUUID() });
     await service.start(cancellation.id);
-    const cancellationDeadline = Date.now() + 5000;
-    while (requests.length < 4) {
-      assert.ok(Date.now() < cancellationDeadline, 'Both cancellation lanes must start.');
-      await new Promise((resolve) => setTimeout(resolve, 5));
-    }
+    await waitFor(() => requests.length >= 4, 5000).catch(() => {
+      assert.fail('Both cancellation lanes must start.');
+    });
     await service.cancel(cancellation.id, cancellation.members[0].conversationId);
     await settle(coordinator);
     const cancelled = service.read(cancellation.id);

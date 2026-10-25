@@ -51,7 +51,20 @@ export function parseRerunApprovalLine(line, expectedRunId) {
   return runId !== null && runId === expectedRunId;
 }
 
-export function evaluateRun({ run, gateText = '', shaPrefix }) {
+const SKIP_CI_SUBJECT = /\[(?:skip ci|ci skip|no ci|skip actions|actions skip)\]/i;
+
+export function commitSubject(message) {
+  if (typeof message !== 'string' || !message.trim()) {
+    throw new Error('GitHub commit payload missing message');
+  }
+  return message.split(/\r?\n/, 1)[0];
+}
+
+export function evaluateRun({ run, gateText = '', shaPrefix, headSubject }) {
+  if (typeof headSubject !== 'string')
+    return { ok: false, reason: 'head commit subject is required' };
+  if (SKIP_CI_SUBJECT.test(headSubject))
+    return { ok: false, reason: 'head commit subject contains [skip ci]' };
   if (run.status !== 'completed') {
     return { ok: false, reason: `run ${run.id} is not completed (status=${run.status})` };
   }
@@ -115,6 +128,29 @@ export function fetchRunFromGh(repo, runId) {
   }
 }
 
+function fetchCommitMessage(repo, sha) {
+  let stdout;
+  try {
+    stdout = execFileSync('gh', ['api', `repos/${repo}/commits/${sha}`], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+  } catch (error) {
+    const stderr = typeof error?.stderr === 'string' ? error.stderr : '';
+    throw new Error(stderr.trim().split('\n').filter(Boolean).at(-1) ?? 'gh command failed');
+  }
+  let payload;
+  try {
+    payload = JSON.parse(stdout);
+  } catch {
+    throw new Error('GitHub commit response was not valid JSON');
+  }
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    throw new Error('GitHub commit payload must be a JSON object');
+  }
+  return commitSubject(payload.commit?.message);
+}
+
 function main() {
   let values;
   try {
@@ -154,9 +190,17 @@ function main() {
     exitError(error instanceof Error ? error.message : 'failed to load GitHub run');
   }
 
+  let headSubject;
+  try {
+    headSubject = fetchCommitMessage(values.repo, run.head_sha);
+  } catch (error) {
+    exitError(error instanceof Error ? error.message : 'failed to load head commit');
+  }
+
   const result = evaluateRun({
     run,
     gateText,
+    headSubject,
     ...(values.sha !== undefined ? { shaPrefix: values.sha } : {}),
   });
   if (!result.ok) {

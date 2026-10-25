@@ -1,7 +1,6 @@
 import { relative } from 'node:path';
-import { realpath } from 'node:fs/promises';
 import { z } from 'zod';
-import { listFiles, readText, workspacePath } from './index';
+import { listFiles, readText, toCanonicalPath, workspacePath } from './index';
 
 const argumentsSchema = z.object({ path: z.string().max(4096) }).strict();
 const excluded = (path: string) =>
@@ -55,7 +54,7 @@ export async function callWorkspaceTool(root: string, name: string, input: unkno
   if (!workspaceToolDefinitions.some((tool) => tool.name === name))
     throw new Error('Unknown workspace tool.');
   const { path } = argumentsSchema.parse(input);
-  const base = await realpath(root);
+  const base = await toCanonicalPath(root);
   const target = await workspacePath(base, path);
   if (excluded(path) || excluded(relative(base, target)))
     throw new Error('This path is excluded from agent file access.');

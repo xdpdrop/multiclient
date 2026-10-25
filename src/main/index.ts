@@ -23,7 +23,7 @@ import {
   id,
   type Route,
 } from '../shared/schema';
-import { contained, readText } from '../runtime/files';
+import { contained, readText, toCanonicalPath, toCanonicalPathOrAncestor } from '../runtime/files';
 import { RuntimeHost } from './runtime';
 import { Secrets } from './secrets';
 import { copyTextHandler } from './clipboard';
@@ -192,11 +192,13 @@ async function initialize() {
     try {
       const url = new URL(request.url);
       if (url.host !== 'client') return new Response('', { status: 403 });
+      const root = await toCanonicalPath(rendererRoot);
       const file = resolve(
-        rendererRoot,
+        root,
         '.' + decodeURIComponent(url.pathname === '/' ? '/index.html' : url.pathname),
       );
-      if (!contained(rendererRoot, file)) return new Response('', { status: 403 });
+      if (!contained(root, await toCanonicalPathOrAncestor(file)))
+        return new Response('', { status: 403 });
       return net.fetch(pathToFileURL(file).href);
     } catch {
       return new Response('', { status: 404 });

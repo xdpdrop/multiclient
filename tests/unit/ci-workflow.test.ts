@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
@@ -22,11 +23,34 @@ describe('ci.yml runner matrix', () => {
     expect(outsideMatrix).not.toMatch(/windows-latest|macos-latest/);
   });
 
+  it('runs Lint before Typecheck via ci-step.sh', () => {
+    const lint = verifyJob.indexOf('name: Lint\n');
+    const typecheck = verifyJob.indexOf('name: Typecheck\n');
+    expect(lint).toBeGreaterThan(-1);
+    expect(typecheck).toBeGreaterThan(lint);
+    expect(verifyJob.slice(lint, typecheck)).toMatch(/run: bash scripts\/ci-step\.sh npm run lint/);
+  });
+
   it('keeps the release job on Windows for v* tag pushes', () => {
     const release = workflow.slice(workflow.indexOf('  release:'));
     expect(release).toMatch(
       /if: success\(\) && github\.event_name == 'push' && startsWith\(github\.ref, 'refs\/tags\/v'\)/,
     );
     expect(release).toMatch(/runs-on: windows-latest/);
+  });
+});
+
+describe('.gitattributes line endings', () => {
+  it('checks out every tracked file with LF so Windows release lint matches Linux', () => {
+    const files = execFileSync('git', ['ls-files', '-z'], { encoding: 'utf8' })
+      .split('\0')
+      .filter(Boolean);
+    expect(files.length).toBeGreaterThan(0);
+    const attrs = execFileSync('git', ['check-attr', '-z', 'eol', '--stdin'], {
+      encoding: 'utf8',
+      input: files.join('\0'),
+    }).split('\0');
+    const notLf = files.filter((_, i) => attrs[i * 3 + 2] !== 'lf');
+    expect(notLf).toEqual([]);
   });
 });

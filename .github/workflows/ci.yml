@@ -75,7 +75,11 @@ jobs:
       # Local `npm run check` stays one chain. CI splits it so a failure still runs
       # the later steps. success() || failure() does not match cancelled. A failed
       # step still fails the job. Linux runs each step under Xvfb + Openbox.
+      - name: Lint
+        shell: bash
+        run: bash scripts/ci-step.sh npm run lint
       - name: Typecheck
+        if: success() || failure()
         shell: bash
         run: bash scripts/ci-step.sh npm run typecheck
       - name: Unit tests

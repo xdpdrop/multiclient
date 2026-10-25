@@ -1,6 +1,6 @@
 import { join, relative } from 'node:path';
-import { realpath, readdir } from 'node:fs/promises';
-import { contained, readText } from './index';
+import { readdir } from 'node:fs/promises';
+import { contained, readText, toCanonicalPath } from './index';
 import type { FileEntry } from '../../shared/types';
 
 const excluded = (name: string) =>
@@ -21,13 +21,13 @@ const excluded = (name: string) =>
   /^\.env(?:\.|$)/i.test(name) ||
   /\.(pem|key)$/i.test(name);
 export async function findProjectFiles(root: string, query: string): Promise<FileEntry[]> {
-  const base = await realpath(root);
+  const base = await toCanonicalPath(root);
   const matches: FileEntry[] = [];
-  const queue = [base];
+  const queue: string[] = [base];
   let visited = 0;
   while (queue.length && visited < 5000 && matches.length < 100) {
     const directory = queue.shift()!;
-    const actual = await realpath(directory);
+    const actual = await toCanonicalPath(directory);
     if (!contained(base, actual)) continue;
     for (const e of await readdir(actual, { withFileTypes: true })) {
       if (++visited > 5000) break;

@@ -1,5 +1,6 @@
 import { writeFile } from 'node:fs/promises';
 import type { ElectronApplication } from '@playwright/test';
+import { waitFor } from '../wait-for';
 
 const pngSignature = '89504e470d0a1a0a';
 
@@ -23,7 +24,8 @@ export async function captureDesktop(app: ElectronApplication, path: string) {
       return;
     } catch (error) {
       lastError = error;
-      await new Promise((resolve) => setTimeout(resolve, 150));
+      const started = Date.now();
+      await waitFor(() => Date.now() - started >= 150, 1000);
     }
   }
   throw lastError;

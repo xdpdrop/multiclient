@@ -1,9 +1,9 @@
 import { spawn, execFile, type ChildProcessWithoutNullStreams } from 'node:child_process';
-import { access, realpath } from 'node:fs/promises';
+import { access } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { homedir } from 'node:os';
 import { isAbsolute, join, resolve } from 'node:path';
-import { contained } from '../files';
+import { contained, toCanonicalPath } from '../files';
 import { promisify } from 'node:util';
 import type { ProviderId } from '../../shared/types';
 export const exec = promisify(execFile);
@@ -48,7 +48,7 @@ export async function findExecutable(
     if (!isAbsolute(configured))
       throw new Error('Choose an absolute path to the official executable.');
     await access(configured, constants.X_OK);
-    return realpath(configured);
+    return toCanonicalPath(configured);
   }
   const name =
     id === 'claude-code' ? 'claude' : id === 'cursor' ? 'agent' : id === 'git' ? 'git' : 'codex';
@@ -64,8 +64,8 @@ export async function findExecutable(
       const file = join(dir, n);
       try {
         await access(file, constants.X_OK);
-        const actual = await realpath(file);
-        if (workspace && contained(await realpath(workspace), actual)) continue;
+        const actual = await toCanonicalPath(file);
+        if (workspace && contained(await toCanonicalPath(workspace), actual)) continue;
         return actual;
       } catch {
         /* Try the next installation directory. */

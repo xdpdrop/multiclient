@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { CodexConnection } from '../../src/runtime/providers/codex';
+import { waitFor } from '../wait-for';
 import { ClaudeConnection } from '../../src/runtime/providers/claude-code';
 import { CursorConnection } from '../../src/runtime/providers/cursor';
 import { connections } from '../../src/shared/defaults';
@@ -251,7 +252,8 @@ describe('official protocol adapter boundaries (synthetic peers)', () => {
       await connection.openSession({});
       const turn = connection.startTurn({ text: 'wait', model: '', mode: 'ask', history: [] });
       const result = expect(turn).rejects.toThrow(/interrupted/);
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      const started = Date.now();
+      await waitFor(() => Date.now() - started >= 100, 1000);
       await connection.cancelTurn();
       await result;
     } finally {
