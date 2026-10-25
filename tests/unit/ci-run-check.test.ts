@@ -11,7 +11,12 @@ type Run = {
 
 const { evaluateRun, parsePositiveRunIdText, parseRerunApprovalLine, parseRunPayload } =
   createRequire(import.meta.url)('../../scripts/ci-run-check.mjs') as {
-    evaluateRun: (input: { run: Run; gateText?: string; shaPrefix?: string }) => {
+    evaluateRun: (input: {
+      run: Run;
+      gateText?: string;
+      shaPrefix?: string;
+      headSubject?: string;
+    }) => {
       ok: boolean;
       reason: string;
     };
@@ -121,5 +126,18 @@ describe('evaluateRun', () => {
 
   it('rejects empty sha prefix', () => {
     expect(evaluateRun({ run, shaPrefix: '' }).ok).toBe(false);
+  });
+
+  it('fails when the head commit subject contains [skip ci]', () => {
+    const result = evaluateRun({ run, headSubject: 'Refresh the gate [skip ci]' });
+    expect(result.ok).toBe(false);
+    expect(result.reason).toContain('[skip ci]');
+  });
+
+  it('passes a clean head subject only when the run is green', () => {
+    expect(evaluateRun({ run, headSubject: 'Refresh the gate' }).ok).toBe(true);
+    expect(
+      evaluateRun({ run: { ...run, conclusion: 'failure' }, headSubject: 'Refresh the gate' }).ok,
+    ).toBe(false);
   });
 });
