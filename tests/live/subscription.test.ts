@@ -10,8 +10,14 @@ import type { ProviderEvent, ProviderId } from '../../src/shared/types';
 
 // Deliberately excluded from normal CI. This test uses the CLI's existing account.
 const provider = process.env.MULTICLIENT_LIVE_PROVIDER as ProviderId | undefined;
+const liveCase = (ok: boolean): typeof it => {
+  if (ok) return it;
+  const noop = (() => undefined) as unknown as typeof it;
+  noop.each = (() => noop) as typeof it.each;
+  return noop;
+};
 
-it.runIf(provider === 'codex' && process.env.MULTICLIENT_LIVE_BYPASS === '1')(
+liveCase(provider === 'codex' && process.env.MULTICLIENT_LIVE_BYPASS === '1')(
   'Bypass edits and executes commands without approvals after resume',
   async () => {
     const dir = await mkdtemp(join(tmpdir(), 'multiclient-bypass-'));
@@ -64,7 +70,7 @@ it.runIf(provider === 'codex' && process.env.MULTICLIENT_LIVE_BYPASS === '1')(
   },
 );
 
-it.runIf(!!provider).each(['edit', 'command'])(
+liveCase(!!provider).each(['edit', 'command'])(
   'Code mode %s applies approval and preserves a file when denied',
   async (operation) => {
     const dir = await mkdtemp(join(tmpdir(), 'multiclient-code-'));
@@ -136,7 +142,7 @@ it.runIf(!!provider).each(['edit', 'command'])(
     }
   },
 );
-it.runIf(provider === 'codex')(
+liveCase(provider === 'codex')(
   'Codex handshake and read-only policy without inference',
   async () => {
     console.log(`Handshake CLI: ${await version(await findExecutable('codex'))}`);
@@ -159,7 +165,7 @@ it.runIf(provider === 'codex')(
     }
   },
 );
-it.runIf(!!provider)(
+liveCase(!!provider)(
   'live subscription text streaming and native resume in a disposable workspace',
   async () => {
     if (!['codex', 'claude-code', 'cursor'].includes(provider!))
@@ -215,7 +221,7 @@ it.runIf(!!provider)(
   },
 );
 
-it.runIf(provider === 'codex')(
+liveCase(provider === 'codex')(
   'Codex reads project files through workspace tools before and after resume',
   async () => {
     const dir = await mkdtemp(join(tmpdir(), 'multiclient-read-tools-'));

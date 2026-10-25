@@ -8,7 +8,7 @@ export async function toCanonicalPath(path: string): Promise<CanonicalPath> {
 }
 
 export async function toCanonicalPathOrAncestor(path: string): Promise<CanonicalPath> {
-  let current = path;
+  let current = resolve(path);
   for (;;) {
     try {
       return await toCanonicalPath(current);

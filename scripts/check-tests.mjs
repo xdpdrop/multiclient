@@ -2,74 +2,55 @@ import { readdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { extname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const SOURCE = new Set(['.ts', '.tsx', '.js', '.mjs', '.cjs']);
-const ISSUE_REF = /#\d+|https?:\/\/github\.com\/[\w.-]+\/[\w.-]+\/issues\/\d+/;
-
-function isHelper(file) {
-  return file.replaceAll('\\', '/').endsWith('tests/wait-for.ts');
-}
-
-function isBareSleep(line) {
-  return /\bsleep\s*\(/.test(line) || /setTimeout\s*\(\s*resolve\s*,/.test(line);
-}
-
-function isUnmarkedSkip(line, previous) {
-  const skip = /\bskipIf\b/.test(line) || /(?:^|[^.\w])(?:it|test|describe)\.skip\b/.test(line);
-  if (!skip) return false;
-  return !ISSUE_REF.test(line) && !ISSUE_REF.test(previous);
-}
+const EXT = new Set(['.ts', '.tsx', '.js', '.mjs', '.cjs']);
+const ISSUE = /#\d+|https?:\/\/github\.com\/[\w.-]+\/[\w.-]+\/issues\/\d+/;
+const SLEEP =
+  /\bsleep\s*\(|setTimeout\s*\(\s*(?:\(\s*\)\s*=>\s*)?[A-Za-z_$][\w$]*\s*(?:\([^)]*\))?\s*,/;
+const SKIP = /\b(?:skipIf|runIf)\b|\.skip\b/;
 
 export function scanText(text, file) {
   const lines = text.split(/\r?\n/);
-  const violations = [];
-  const helper = isHelper(file);
+  const helper = file.replaceAll('\\', '/').endsWith('tests/wait-for.ts');
+  const out = [];
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    const previous = i > 0 ? lines[i - 1] : '';
-    if (!helper && isBareSleep(line)) violations.push({ file, line: i + 1, rule: 'bare-sleep' });
-    if (isUnmarkedSkip(line, previous))
-      violations.push({ file, line: i + 1, rule: 'skip-without-issue' });
+    const prev = i ? lines[i - 1] : '';
+    if (!helper && SLEEP.test(line)) out.push({ file, line: i + 1, rule: 'bare-sleep' });
+    if (SKIP.test(line) && !ISSUE.test(line) && !ISSUE.test(prev))
+      out.push({ file, line: i + 1, rule: 'skip-without-issue' });
   }
-  return violations;
+  return out;
 }
 
 export function scanTree(root) {
-  const violations = [];
+  const out = [];
   const walk = (dir) => {
     for (const name of readdirSync(dir)) {
       if (name === 'node_modules') continue;
       const path = join(dir, name);
-      if (statSync(path).isDirectory()) {
-        walk(path);
-        continue;
-      }
-      if (!SOURCE.has(extname(name))) continue;
-      const file = relative(process.cwd(), path).split(sep).join('/');
-      violations.push(...scanText(readFileSync(path, 'utf8'), file));
+      if (statSync(path).isDirectory()) walk(path);
+      else if (EXT.has(extname(name)))
+        out.push(
+          ...scanText(
+            readFileSync(path, 'utf8'),
+            relative(process.cwd(), path).split(sep).join('/'),
+          ),
+        );
     }
   };
   walk(root);
-  return violations;
+  return out;
 }
 
-function main() {
+if (
+  process.argv[1] &&
+  realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url))
+) {
   const root = process.argv[2] ?? 'tests';
-  const violations = scanTree(root);
-  if (violations.length) {
-    for (const violation of violations)
-      console.error(`${violation.rule} ${violation.file}:${violation.line}`);
+  const found = scanTree(root);
+  if (!found.length) console.log(`PASS ${root}`);
+  else {
+    for (const hit of found) console.error(`${hit.rule} ${hit.file}:${hit.line}`);
     process.exit(1);
   }
-  console.log(`PASS ${root}`);
 }
-
-function isMain() {
-  if (!process.argv[1]) return false;
-  try {
-    return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url));
-  } catch {
-    return false;
-  }
-}
-
-if (isMain()) main();

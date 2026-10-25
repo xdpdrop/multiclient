@@ -1,3 +1,5 @@
+export const after = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
 export async function waitFor(
   predicate: () => boolean | Promise<boolean>,
   timeoutMs: number,

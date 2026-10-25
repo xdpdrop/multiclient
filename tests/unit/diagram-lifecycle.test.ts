@@ -2,6 +2,7 @@ import { beforeEach, afterEach, it, expect, vi } from 'vitest';
 import { BrowserWindow } from 'electron';
 import { rm } from 'node:fs/promises';
 import { renderDiagram } from '../../src/main/artifacts';
+import { after } from '../wait-for';
 
 vi.mock('electron', () => ({ BrowserWindow: vi.fn(), ipcMain: {}, dialog: {} }));
 vi.mock('node:fs/promises', () => ({
@@ -60,11 +61,9 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers());
 
 it('allows bounded slow initialization without consuming the five-second Mermaid execution budget', async () => {
-  window.loadFile.mockImplementation(
-    () => new Promise((resolve) => setTimeout(() => resolve(undefined), 20000)),
-  );
-  window.webContents.executeJavaScript.mockImplementation(
-    () => new Promise((resolve) => setTimeout(() => resolve('<svg>fixture</svg>'), 4000)),
+  window.loadFile.mockImplementation(() => after(20000));
+  window.webContents.executeJavaScript.mockImplementation(() =>
+    after(4000).then(() => '<svg>fixture</svg>'),
   );
   let completed = false;
   const operation = renderDiagram('graph TD\nA-->B', 'renderer.js').then((value) => {

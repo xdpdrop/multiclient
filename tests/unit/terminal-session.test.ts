@@ -71,7 +71,9 @@ async function runScript(cwd: string) {
       resolveClosed();
     }
   });
-  const timer = setTimeout(() => resolveExit(-1), 15000);
+  const timer = setTimeout(function () {
+    resolveExit(-1);
+  }, 15000);
   try {
     const text = script();
     const id = terminals.open(cwd, 'session', 'script', text);

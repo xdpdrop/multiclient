@@ -51,7 +51,7 @@ export function parseRerunApprovalLine(line, expectedRunId) {
   return runId !== null && runId === expectedRunId;
 }
 
-const SKIP_CI_SUBJECT = /\[skip ci\]/i;
+const SKIP_CI_SUBJECT = /\[(?:skip ci|ci skip|no ci|skip actions|actions skip)\]/i;
 
 export function commitSubject(message) {
   if (typeof message !== 'string' || !message.trim()) {
@@ -61,9 +61,10 @@ export function commitSubject(message) {
 }
 
 export function evaluateRun({ run, gateText = '', shaPrefix, headSubject }) {
-  if (typeof headSubject === 'string' && SKIP_CI_SUBJECT.test(headSubject)) {
+  if (typeof headSubject !== 'string')
+    return { ok: false, reason: 'head commit subject is required' };
+  if (SKIP_CI_SUBJECT.test(headSubject))
     return { ok: false, reason: 'head commit subject contains [skip ci]' };
-  }
   if (run.status !== 'completed') {
     return { ok: false, reason: `run ${run.id} is not completed (status=${run.status})` };
   }
@@ -135,12 +136,8 @@ function fetchCommitMessage(repo, sha) {
       stdio: ['ignore', 'pipe', 'pipe'],
     });
   } catch (error) {
-    const stderr =
-      error && typeof error === 'object' && 'stderr' in error && typeof error.stderr === 'string'
-        ? error.stderr
-        : '';
-    const lines = stderr.trim().split('\n').filter(Boolean);
-    throw new Error(lines.at(-1) ?? 'gh command failed');
+    const stderr = typeof error?.stderr === 'string' ? error.stderr : '';
+    throw new Error(stderr.trim().split('\n').filter(Boolean).at(-1) ?? 'gh command failed');
   }
   let payload;
   try {
@@ -148,13 +145,10 @@ function fetchCommitMessage(repo, sha) {
   } catch {
     throw new Error('GitHub commit response was not valid JSON');
   }
-  if (payload === null || typeof payload !== 'object' || Array.isArray(payload)) {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
     throw new Error('GitHub commit payload must be a JSON object');
   }
-  const commit = payload.commit;
-  const message =
-    commit && typeof commit === 'object' && !Array.isArray(commit) ? commit.message : undefined;
-  return commitSubject(message);
+  return commitSubject(payload.commit?.message);
 }
 
 function main() {

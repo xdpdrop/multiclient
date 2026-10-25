@@ -3,7 +3,7 @@ import { mkdtemp, mkdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { sendSchema, appearanceSchema, routes } from '../../src/shared/schema';
 import { defaultSettings, capabilities } from '../../src/shared/defaults';
-import { contained, toCanonicalPath } from '../../src/runtime/files';
+import { contained, toCanonicalPath, toCanonicalPathOrAncestor } from '../../src/runtime/files';
 import { validateEndpoint } from '../../src/runtime/providers/api';
 import { childEnvironment } from '../../src/runtime/providers/process';
 import { parseStatus } from '../../src/runtime/git';
@@ -24,10 +24,14 @@ describe('trust boundaries', () => {
       const sibling = join(root, 'test-root-other');
       await mkdir(child, { recursive: true });
       await mkdir(sibling);
+      await mkdir(join(root, 'outside'));
       const base = await toCanonicalPath(baseDir);
       expect(contained(base, await toCanonicalPath(child))).toBe(true);
       expect(contained(base, await toCanonicalPath(sibling))).toBe(false);
       expect(contained(base, await toCanonicalPath(root))).toBe(false);
+      expect(
+        contained(base, await toCanonicalPathOrAncestor(`${baseDir}/missing/../../outside`)),
+      ).toBe(false);
     } finally {
       await rm(root, { recursive: true, force: true });
     }
