@@ -33,10 +33,33 @@ function isTrivia(kind) {
   );
 }
 
+function isKeyword(kind) {
+  return kind >= ts.SyntaxKind.FirstKeyword && kind <= ts.SyntaxKind.LastKeyword;
+}
+
+// `as T` / `satisfies T` and postfix `!` end an expression, so the next slash is division.
+function slashIsRegex(prevNonTrivia, lastNonTrivia) {
+  if (NO_REGEX_AFTER.has(lastNonTrivia)) return false;
+  if (
+    lastNonTrivia === ts.SyntaxKind.ExclamationToken &&
+    (prevNonTrivia === ts.SyntaxKind.Identifier ||
+      prevNonTrivia === ts.SyntaxKind.CloseParenToken ||
+      prevNonTrivia === ts.SyntaxKind.CloseBracketToken)
+  )
+    return false;
+  if (
+    isKeyword(lastNonTrivia) &&
+    (prevNonTrivia === ts.SyntaxKind.AsKeyword || prevNonTrivia === ts.SyntaxKind.SatisfiesKeyword)
+  )
+    return false;
+  return true;
+}
+
 function lex(text) {
   const scanner = ts.createScanner(ts.ScriptTarget.Latest, false, ts.LanguageVariant.TSX, text);
   const tokens = [];
   const templateStack = [];
+  let prevNonTrivia = ts.SyntaxKind.Unknown;
   let lastNonTrivia = ts.SyntaxKind.Unknown;
   while (true) {
     let kind = scanner.scan();
@@ -44,7 +67,7 @@ function lex(text) {
     if (!isTrivia(kind)) {
       if (
         (kind === ts.SyntaxKind.SlashToken || kind === ts.SyntaxKind.SlashEqualsToken) &&
-        !NO_REGEX_AFTER.has(lastNonTrivia)
+        slashIsRegex(prevNonTrivia, lastNonTrivia)
       ) {
         if (scanner.reScanSlashToken() === ts.SyntaxKind.RegularExpressionLiteral)
           kind = ts.SyntaxKind.RegularExpressionLiteral;
@@ -58,6 +81,7 @@ function lex(text) {
       if (kind === ts.SyntaxKind.TemplateHead) templateStack.push(kind);
       else if (kind === ts.SyntaxKind.OpenBraceToken && templateStack.length)
         templateStack.push(kind);
+      prevNonTrivia = lastNonTrivia;
       lastNonTrivia = kind;
     }
     tokens.push({ kind, pos: scanner.getTokenStart(), end: scanner.getTokenEnd() });

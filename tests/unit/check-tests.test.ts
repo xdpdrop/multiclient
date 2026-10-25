@@ -70,6 +70,16 @@ it('flags a sleep hidden by a regex literal on the same line', () => {
   expect(scanText(byParen, 'tests/x.ts')[0]?.rule).toBe('bare-sleep');
 });
 
+it('flags a sleep after a cast, satisfies, or non-null slash', () => {
+  const call = `await ${'sleep'}(1)`;
+  const asNumber = `const x = y as number / 2; ${call}`;
+  const nonNull = `const z = a! / 2; ${call}`;
+  const satisfies = `const w = y satisfies number / 2; ${call}`;
+  expect(scanText(asNumber, 'tests/x.ts')[0]?.rule).toBe('bare-sleep');
+  expect(scanText(nonNull, 'tests/x.ts')[0]?.rule).toBe('bare-sleep');
+  expect(scanText(satisfies, 'tests/x.ts')[0]?.rule).toBe('bare-sleep');
+});
+
 it('flags an async arrow timeout that takes an argument', () => {
   expect(scanText(timed('async (arg) => r(), 1'), 'tests/x.ts')[0]?.rule).toBe('bare-sleep');
   expect(scanText(timed('async (arg) => { r(); }, 1'), 'tests/x.ts')[0]?.rule).toBe('bare-sleep');
