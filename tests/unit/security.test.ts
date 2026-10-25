@@ -1,7 +1,9 @@
 import { describe, it, expect } from 'vitest';
+import { mkdtemp, mkdir, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { sendSchema, appearanceSchema, routes } from '../../src/shared/schema';
 import { defaultSettings, capabilities } from '../../src/shared/defaults';
-import { contained } from '../../src/runtime/files';
+import { contained, toCanonicalPath } from '../../src/runtime/files';
 import { validateEndpoint } from '../../src/runtime/providers/api';
 import { childEnvironment } from '../../src/runtime/providers/process';
 import { parseStatus } from '../../src/runtime/git';
@@ -14,11 +16,26 @@ describe('trust boundaries', () => {
       routes.terminalResize.parse({ id: crypto.randomUUID(), cols: 999999, rows: 10 }),
     ).toThrow();
   });
-  it('contains siblings and traversal', () => {
+  it('contains siblings and traversal', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'multiclient-contained-'));
+    try {
+      const baseDir = join(root, 'test-root');
+      const child = join(baseDir, 'child');
+      const sibling = join(root, 'test-root-other');
+      await mkdir(child, { recursive: true });
+      await mkdir(sibling);
+      const base = await toCanonicalPath(baseDir);
+      expect(contained(base, await toCanonicalPath(child))).toBe(true);
+      expect(contained(base, await toCanonicalPath(sibling))).toBe(false);
+      expect(contained(base, await toCanonicalPath(root))).toBe(false);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+  it('rejects a raw string at a containment check', () => {
     const base = resolve('test-root');
-    expect(contained(base, join(base, 'child'))).toBe(true);
-    expect(contained(base, base + '-other')).toBe(false);
-    expect(contained(base, resolve(base, '..'))).toBe(false);
+    // @ts-expect-error raw strings are not canonical paths
+    contained(base, join(base, 'child'));
   });
   it('never injects API or subscription credentials into a CLI', () => {
     process.env.OPENAI_API_KEY = 'secret';
