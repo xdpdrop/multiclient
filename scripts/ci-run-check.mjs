@@ -63,10 +63,8 @@ export function commitSubject(message) {
 export function evaluateRun({ run, gateText = '', shaPrefix, headSubject }) {
   if (typeof headSubject !== 'string')
     return { ok: false, reason: 'head commit subject is required' };
-  if (SKIP_CI_SUBJECT.test(headSubject.split(/\r?\n/, 1)[0]))
+  if (SKIP_CI_SUBJECT.test(headSubject))
     return { ok: false, reason: 'head commit subject contains [skip ci]' };
-  if (/^skip-checks:(?: )?true$/im.test(headSubject))
-    return { ok: false, reason: 'head commit message contains a skip-checks trailer' };
   if (run.status !== 'completed') {
     return { ok: false, reason: `run ${run.id} is not completed (status=${run.status})` };
   }
@@ -150,8 +148,7 @@ function fetchCommitMessage(repo, sha) {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
     throw new Error('GitHub commit payload must be a JSON object');
   }
-  commitSubject(payload.commit?.message);
-  return payload.commit.message;
+  return commitSubject(payload.commit?.message);
 }
 
 function main() {

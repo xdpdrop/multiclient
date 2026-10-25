@@ -13,8 +13,10 @@ export function scanText(text, file) {
   const helper = file.replaceAll('\\', '/').endsWith('tests/wait-for.ts');
   const out = [];
   for (let i = 0; i < lines.length; i++) {
-    if (!helper && SLEEP.test(lines[i])) out.push({ file, line: i + 1, rule: 'bare-sleep' });
-    if (SKIP.test(lines[i]) && !ISSUE.test(lines[i]) && !ISSUE.test(i ? lines[i - 1] : ''))
+    const line = lines[i];
+    const prev = i ? lines[i - 1] : '';
+    if (!helper && SLEEP.test(line)) out.push({ file, line: i + 1, rule: 'bare-sleep' });
+    if (SKIP.test(line) && !ISSUE.test(line) && !ISSUE.test(prev))
       out.push({ file, line: i + 1, rule: 'skip-without-issue' });
   }
   return out;
@@ -40,12 +42,15 @@ export function scanTree(root) {
   return out;
 }
 
-const self =
-  process.argv[1] && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url));
-if (self) {
+if (
+  process.argv[1] &&
+  realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url))
+) {
   const root = process.argv[2] ?? 'tests';
   const found = scanTree(root);
   if (!found.length) console.log(`PASS ${root}`);
-  else
-    found.forEach((hit) => console.error(`${hit.rule} ${hit.file}:${hit.line}`)) || process.exit(1);
+  else {
+    for (const hit of found) console.error(`${hit.rule} ${hit.file}:${hit.line}`);
+    process.exit(1);
+  }
 }
