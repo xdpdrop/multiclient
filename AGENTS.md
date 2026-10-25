@@ -2,9 +2,14 @@
 
 Multiclient is a local-first Windows desktop client for AI conversations and project work — Electron, TypeScript, React, plus a small C# Windows supervisor. Use this file for the repo map and commands; folder-specific rules live in nested `AGENTS.md` files. Deeper narrative: [docs/architecture/README.md](docs/architecture/README.md), [docs/contributing/README.md](docs/contributing/README.md), [SECURITY.md](SECURITY.md).
 
-## Agent rule
+## Agent rules
 
-Agents push, open a ready (non-draft) PR or update the existing one, and end their turn. CI skips draft PRs. Do not poll or wait on CI; the reviewer checks CI.
+Agents push, open a ready (non-draft) PR or update the existing one, and end their turn. Do not poll or wait on CI; the reviewer checks CI.
+
+- Work on a branch; never push to the default branch, never push tags, never merge.
+- One purpose per PR, at most 400 changed lines.
+- Run the local checks under Commands before pushing.
+- State only verified facts in PR bodies; label anything unverified.
 
 ## Models
 
@@ -14,15 +19,15 @@ Grok only. Ladder, one try per rung before stepping up: `composer-2.5` (trivial)
 
 Hard trust split: the renderer cannot reach Node, Electron, or SQLite.
 
-| Process  | Entry                                  | Notes                                            |
-| -------- | -------------------------------------- | ------------------------------------------------ |
-| Main     | `src/main/index.ts`                    | [src/main/AGENTS.md](src/main/AGENTS.md)         |
-| Preload  | `src/preload/index.ts`                 | [src/preload/AGENTS.md](src/preload/AGENTS.md)   |
-| Renderer | `src/renderer/src/main.tsx`, `App.tsx` | [src/renderer/AGENTS.md](src/renderer/AGENTS.md) |
-| Runtime  | `src/runtime/index.ts`                 | [src/runtime/AGENTS.md](src/runtime/AGENTS.md)   |
-| Bridges  | `src/bridges/*/index.ts`               | [src/bridges/AGENTS.md](src/bridges/AGENTS.md)   |
+| Process  | Entry                                               | Notes                                            |
+| -------- | --------------------------------------------------- | ------------------------------------------------ |
+| Main     | `src/main/index.ts`                                 | [src/main/AGENTS.md](src/main/AGENTS.md)         |
+| Preload  | `src/preload/index.ts`                              | [src/preload/AGENTS.md](src/preload/AGENTS.md)   |
+| Renderer | `src/renderer/src/main.tsx`, `src/renderer/App.tsx` | [src/renderer/AGENTS.md](src/renderer/AGENTS.md) |
+| Runtime  | `src/runtime/index.ts`                              | [src/runtime/AGENTS.md](src/runtime/AGENTS.md)   |
+| Bridges  | `src/bridges/*/index.ts`                            | [src/bridges/AGENTS.md](src/bridges/AGENTS.md)   |
 
-IPC contracts: [src/shared/AGENTS.md](src/shared/AGENTS.md). Build and CI scripts: [scripts/AGENTS.md](scripts/AGENTS.md).
+IPC contracts: [src/shared/AGENTS.md](src/shared/AGENTS.md). Build scripts: [scripts/AGENTS.md](scripts/AGENTS.md).
 
 ## File map
 
@@ -42,27 +47,30 @@ IPC contracts: [src/shared/AGENTS.md](src/shared/AGENTS.md). Build and CI script
 | `electron.vite.config.ts` | Builds main, preload, renderer (main includes runtime, bridges, workers) |
 | `electron-builder.yml`    | Packaging; `publish: null`                                               |
 
-Packaged build output is `out/`. Do not commit `out/`, `release/`, credentials, `.env` secrets, local databases, raw provider transcripts, or Playwright output (`test-results/`, `test-results-*`, `playwright-report/`).
+Build output is `out/`. Packaging writes `release/`. Do not commit `out/`, `release/`, credentials, `.env` secrets, or Playwright output (`test-results/`, `test-results-*`, `playwright-report/`).
 
 ## Commands
 
-Requires Node.js 24, npm, and Git. Use the committed lockfile.
+Requires Node.js 24 or newer, npm, and Git. Use the committed lockfile.
 
 | Step        | Command                                     |
 | ----------- | ------------------------------------------- |
 | Install     | `npm ci`                                    |
-| Single test | `npx vitest run tests/unit/secrets.test.ts` |
 | Lint        | `npm run lint` (Prettier `format:check`)    |
 | Typecheck   | `npm run typecheck`                         |
+| Test        | `npm test`                                  |
+| Single test | `npx vitest run tests/unit/secrets.test.ts` |
 | Build       | `npm run build`                             |
-| Quiet check | `bash scripts/check.sh`                     |
+| Local check | `bash scripts/check.sh`                     |
 
-Other scripts: `npm run dev`, `npm test`, `npm run test:e2e`, `npm run verify` (typecheck, lint, unit tests, and build; requires Node 24 — `preverify` refuses older Node), `npm run check` (full local gate including integration harnesses and Playwright). See [scripts/AGENTS.md](scripts/AGENTS.md).
+## CI
+
+The repository is public and CI uses GitHub-hosted runners. In `.github/workflows/ci.yml` on `main`, pull requests and pushes to `main` run `ubuntu-latest` only. `windows-latest` and `macos-latest` run only on `v*` tags and `workflow_dispatch`.
 
 ## Conventions
 
 - Prettier (`.prettierrc.json`): single quotes, semicolons, trailing commas, width 100. No ESLint.
-- Source is Elastic License 2.0 (`LICENSE`). Do not relicense. Release tags from before the license change remain MIT.
+- Source is Elastic License 2.0 (`LICENSE`). Do not relicense.
 - Stay in the subsystem you change; see nested `AGENTS.md` for import and SQL boundaries.
 - Migrations are additive only ([migrations/AGENTS.md](migrations/AGENTS.md)).
 - Windows x64 is the primary ship target; preview builds are unsigned with no auto-update.
