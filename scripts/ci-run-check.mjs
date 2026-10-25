@@ -56,7 +56,8 @@ const SKIP_CHECKS_TRAILER = /^skip-checks[ \t]*:[ \t]*true[ \t]*$/i;
 
 function unfoldTrailerLines(block) {
   const lines = [];
-  for (const line of block.split(/\r?\n/)) {
+  // A continuation may start with CR (`skip-checks:\n\r true`); drop CR before folding.
+  for (const line of block.replaceAll('\r', '').split('\n')) {
     if (lines.length && /^[ \t]/.test(line)) lines[lines.length - 1] += line;
     else lines.push(line);
   }

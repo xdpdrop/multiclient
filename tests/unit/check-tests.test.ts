@@ -1,4 +1,7 @@
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import { join } from 'node:path';
 import { expect, it } from 'vitest';
 
 const { scanText, scanTree } = createRequire(import.meta.url)('../../scripts/check-tests.mjs') as {
@@ -57,4 +60,63 @@ it('flags both sleep shapes and each unmarked skip form', () => {
   expect(scanText(`// #18\n${gate('it.SKI(true)()')}`, 'tests/x.ts')).toEqual([]);
   expect(scanText(timed('r, 1'), 'tests/wait-for.ts')).toEqual([]);
   expect(scanTree('tests')).toEqual([]);
+});
+
+it('flags a sleep hidden by a regex literal on the same line', () => {
+  const call = `${'sleep'}(1)`;
+  const bySlashes = `const re = /https?:\\/\\//; ${call}`;
+  const byParen = `wait${'For'}(() => /\\)/.test(s) || Date.now() > t, 1)`;
+  expect(scanText(bySlashes, 'tests/x.ts')[0]?.rule).toBe('bare-sleep');
+  expect(scanText(byParen, 'tests/x.ts')[0]?.rule).toBe('bare-sleep');
+});
+
+it('flags an async arrow timeout that takes an argument', () => {
+  expect(scanText(timed('async (arg) => r(), 1'), 'tests/x.ts')[0]?.rule).toBe('bare-sleep');
+  expect(scanText(timed('async (arg) => { r(); }, 1'), 'tests/x.ts')[0]?.rule).toBe('bare-sleep');
+});
+
+it('scans comments inside template interpolations', () => {
+  const call = `${'sleep'}(1)`;
+  const block = `const s = \`\${ /* ${call} */ }\``;
+  const line = `const s = \`\${ // ${call}\n}\``;
+  const live = `const s = \`\${ ${call} }\``;
+  expect(scanText(block, 'tests/x.ts')).toEqual([]);
+  expect(scanText(line, 'tests/x.ts')).toEqual([]);
+  expect(scanText(live, 'tests/x.ts')[0]?.rule).toBe('bare-sleep');
+});
+
+it('rejects each planted sleep form in the test tree', () => {
+  const call = `${'sleep'}(1)`;
+  const root = mkdtempSync(join('tests/unit', '.plant-'));
+  const file = join(root, 'sleeps.ts');
+  writeFileSync(
+    file,
+    [
+      `const re = /https?:\\/\\//; ${call}`,
+      `wait${'For'}(() => /\\)/.test(s) || Date.now() > t, 1)`,
+      timed('async (arg) => r(), 1'),
+      `const hidden = \`\${ /* note ${call} */ }\``,
+      `const shown = \`\${ /* note */ ""; ${call} }\``,
+    ].join('\n'),
+  );
+  try {
+    let code = 0;
+    let stderr = '';
+    try {
+      execFileSync(process.execPath, ['scripts/check-tests.mjs', root], { encoding: 'utf8' });
+    } catch (error) {
+      code = typeof error === 'object' && error && 'status' in error ? Number(error.status) : 0;
+      stderr = typeof error === 'object' && error && 'stderr' in error ? String(error.stderr) : '';
+    }
+    expect(code, stderr).toBe(1);
+    const hits = stderr
+      .trim()
+      .split('\n')
+      .filter(Boolean)
+      .map((entry) => Number(entry.slice(entry.lastIndexOf(':') + 1)))
+      .sort((a, b) => a - b);
+    expect(hits).toEqual([1, 2, 3, 5]);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
