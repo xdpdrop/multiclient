@@ -67,6 +67,7 @@ export function evaluateRun({ run, gateText = '', shaPrefix, headMessage }) {
     return { ok: false, reason: 'head commit subject contains [skip ci]' };
   const trailerBlock =
     headMessage
+      .replace(/(?:\r?\n[ \t]*)+$/, '')
       .split(/\r?\n(?:\r?\n)+/)
       .slice(1)
       .at(-1) ?? '';

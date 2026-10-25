@@ -139,6 +139,11 @@ describe('evaluateRun', () => {
     ).toBe(true);
     for (const trailer of ['skip-checks:true', 'skip-checks: true'])
       expect(realEvaluateRun({ run, headMessage: `Subject\n\n${trailer}` }).ok).toBe(false);
+    for (const message of [
+      'Subject\n\nskip-checks: true\n\n',
+      'Subject\r\n\r\nskip-checks: true\r\n\r\n',
+    ])
+      expect(realEvaluateRun({ run, headMessage: message }).ok).toBe(false);
     expect(realEvaluateRun({ run, headMessage: 'Subject\n\nskip-checks: false' }).ok).toBe(true);
   });
 });
