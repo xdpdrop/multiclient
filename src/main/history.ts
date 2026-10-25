@@ -5,7 +5,7 @@ import { promisify } from 'node:util';
 import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { id } from '../shared/schema';
-import { contained, toCanonicalPath } from '../runtime/files';
+import { contained, toCanonicalPathOrAncestor } from '../runtime/files';
 import type { Message, Conversation } from '../shared/types';
 import type { RuntimeHost } from './runtime';
 import { createElement } from 'react';
@@ -158,7 +158,12 @@ export async function writeBackup(host: RuntimeHost, dataDir: string, path: stri
       await rm(staged, { force: true });
     }
   } finally {
-    if (contained(await toCanonicalPath(dataDir), await toCanonicalPath(temporary)))
+    if (
+      contained(
+        await toCanonicalPathOrAncestor(dataDir),
+        await toCanonicalPathOrAncestor(temporary),
+      )
+    )
       await rm(temporary, { recursive: true, force: true });
   }
 }
@@ -200,13 +205,20 @@ export async function prepareRestore(host: RuntimeHost, dataDir: string, path: s
     sanitizeRestoredProfile(join(temporary, 'multiclient.sqlite'));
     return temporary;
   } catch (error) {
-    if (contained(await toCanonicalPath(dataDir), await toCanonicalPath(temporary)))
+    if (
+      contained(
+        await toCanonicalPathOrAncestor(dataDir),
+        await toCanonicalPathOrAncestor(temporary),
+      )
+    )
       await rm(temporary, { recursive: true, force: true });
     throw error;
   }
 }
 export async function installRestore(host: RuntimeHost, dataDir: string, temporary: string) {
-  if (!contained(await toCanonicalPath(dataDir), await toCanonicalPath(temporary)))
+  if (
+    !contained(await toCanonicalPathOrAncestor(dataDir), await toCanonicalPathOrAncestor(temporary))
+  )
     throw new Error('Invalid restore staging directory.');
   const rollback = await mkdtemp(join(dataDir, 'previous-profile-'));
   const moved: string[] = [];
