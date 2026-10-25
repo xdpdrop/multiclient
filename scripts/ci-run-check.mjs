@@ -60,11 +60,18 @@ export function commitSubject(message) {
   return message.split(/\r?\n/, 1)[0];
 }
 
-export function evaluateRun({ run, gateText = '', shaPrefix, headSubject }) {
-  if (typeof headSubject !== 'string')
-    return { ok: false, reason: 'head commit subject is required' };
-  if (SKIP_CI_SUBJECT.test(headSubject))
+export function evaluateRun({ run, gateText = '', shaPrefix, headMessage }) {
+  if (typeof headMessage !== 'string')
+    return { ok: false, reason: 'head commit message is required' };
+  if (SKIP_CI_SUBJECT.test(headMessage.split(/\r?\n/, 1)[0]))
     return { ok: false, reason: 'head commit subject contains [skip ci]' };
+  const trailerBlock =
+    headMessage
+      .split(/\r?\n(?:\r?\n)+/)
+      .slice(1)
+      .at(-1) ?? '';
+  if (trailerBlock.split(/\r?\n/).some((line) => /^skip-checks:(?: )?true$/.test(line)))
+    return { ok: false, reason: 'head commit message contains a skip-checks trailer' };
   if (run.status !== 'completed') {
     return { ok: false, reason: `run ${run.id} is not completed (status=${run.status})` };
   }
@@ -148,7 +155,8 @@ function fetchCommitMessage(repo, sha) {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
     throw new Error('GitHub commit payload must be a JSON object');
   }
-  return commitSubject(payload.commit?.message);
+  commitSubject(payload.commit?.message);
+  return payload.commit.message;
 }
 
 function main() {
@@ -190,9 +198,9 @@ function main() {
     exitError(error instanceof Error ? error.message : 'failed to load GitHub run');
   }
 
-  let headSubject;
+  let headMessage;
   try {
-    headSubject = fetchCommitMessage(values.repo, run.head_sha);
+    headMessage = fetchCommitMessage(values.repo, run.head_sha);
   } catch (error) {
     exitError(error instanceof Error ? error.message : 'failed to load head commit');
   }
@@ -200,7 +208,7 @@ function main() {
   const result = evaluateRun({
     run,
     gateText,
-    headSubject,
+    headMessage,
     ...(values.sha !== undefined ? { shaPrefix: values.sha } : {}),
   });
   if (!result.ok) {
