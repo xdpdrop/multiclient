@@ -47,7 +47,7 @@ IPC contracts: [src/shared/AGENTS.md](src/shared/AGENTS.md). Build scripts: [scr
 | `electron.vite.config.ts` | Builds main, preload, renderer (main includes runtime, bridges, workers) |
 | `electron-builder.yml`    | Packaging; `publish: null`                                               |
 
-Build output is `out/`. Packaging writes `release/`. Do not commit `out/`, `release/`, credentials, `.env` secrets, or Playwright output (`test-results/`, `test-results-*`, `playwright-report/`).
+Build output is `out/`. Packaging writes `release/`. Do not commit `out/`, `release/`, credentials, `.env` secrets, local databases, raw provider transcripts, or Playwright output (`test-results/`, `test-results-*`, `playwright-report/`).
 
 ## Commands
 
@@ -63,7 +63,7 @@ Requires Node.js 24 or newer, npm, and Git. Use the committed lockfile.
 | Build       | `npm run build`                             |
 | Local check | `bash scripts/check.sh`                     |
 
-Other scripts: `npm run dev`, `npm run test:e2e`, `npm run verify` (typecheck, lint, unit tests, and build; `preverify` runs `scripts/check-node.mjs`), `npm run check` (full local gate including integration harnesses and Playwright). See [scripts/AGENTS.md](scripts/AGENTS.md).
+Other scripts: `npm run dev`, `npm run test:e2e`, `npm run verify` (typecheck, lint, unit and contract tests, and build; `preverify` runs `scripts/check-node.mjs`), `npm run check` (full local gate including integration harnesses and Playwright). See [scripts/AGENTS.md](scripts/AGENTS.md).
 
 ## CI
 
