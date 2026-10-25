@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
@@ -36,5 +37,20 @@ describe('ci.yml runner matrix', () => {
       /if: success\(\) && github\.event_name == 'push' && startsWith\(github\.ref, 'refs\/tags\/v'\)/,
     );
     expect(release).toMatch(/runs-on: windows-latest/);
+  });
+});
+
+describe('.gitattributes line endings', () => {
+  it('checks out every tracked file with LF so Windows release lint matches Linux', () => {
+    const files = execFileSync('git', ['ls-files', '-z'], { encoding: 'utf8' })
+      .split('\0')
+      .filter(Boolean);
+    expect(files.length).toBeGreaterThan(0);
+    const attrs = execFileSync('git', ['check-attr', '-z', 'eol', '--stdin'], {
+      encoding: 'utf8',
+      input: files.join('\0'),
+    }).split('\0');
+    const notLf = files.filter((_, i) => attrs[i * 3 + 2] !== 'lf');
+    expect(notLf).toEqual([]);
   });
 });
