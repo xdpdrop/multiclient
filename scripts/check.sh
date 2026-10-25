@@ -20,6 +20,12 @@ run_step() {
   exit 1
 }
 
+models_line() {
+  bash scripts/models-line.sh AGENTS.md
+}
+
+run_step models-line models_line
+run_step models-line-test bash scripts/models-line.test.sh
 run_step typecheck npm run typecheck
 run_step lint npm run lint
 run_step test npm test
