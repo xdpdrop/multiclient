@@ -12,6 +12,15 @@ const gate = (body: string) =>
     .replaceAll('RUN', `run${'If'}`)
     .replaceAll('SKI', `skip${'If'}`);
 
+it('flags wall-clock waitFor and function-expression timeouts', () => {
+  const clock = `wait${'For'}(() => Date.now() - started >= 100, 1000)`;
+  const guard = `set${'Timeout'}(function () { resolveExit(-1); }, 15000)`;
+  expect(scanText(clock, 'tests/x.ts')[0]?.rule).toBe('bare-sleep');
+  expect(scanText(guard, 'tests/x.ts')[0]?.rule).toBe('bare-sleep');
+  expect(scanText(clock, 'tests/wait-for.ts')).toEqual([]);
+  expect(scanText(guard, 'tests/wait-for.ts')).toEqual([]);
+});
+
 it('flags both sleep shapes and each unmarked skip form', () => {
   for (const body of ['r, 1', '() => r(), 1'])
     expect(scanText(timed(body), 'tests/x.ts')[0]?.rule).toBe('bare-sleep');

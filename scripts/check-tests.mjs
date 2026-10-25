@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 const EXT = new Set(['.ts', '.tsx', '.js', '.mjs', '.cjs']);
 const ISSUE = /#\d+|https?:\/\/github\.com\/[\w.-]+\/[\w.-]+\/issues\/\d+/;
 const SLEEP =
-  /\bsleep\s*\(|setTimeout\s*\(\s*(?:\(\s*\)\s*=>\s*)?[A-Za-z_$][\w$]*\s*(?:\([^)]*\))?\s*,/;
+  /\bsleep\s*\(|setTimeout\s*\(\s*(?:function\b|(?:\(\s*\)\s*=>\s*)?[A-Za-z_$][\w$]*\s*(?:\([^)]*\))?\s*,)|\bwaitFor\s*\([^;]*\bDate\.now\s*\(/;
 const SKIP = /\b(?:skipIf|runIf)\b|\.skip\b/;
 
 export function scanText(text, file) {
