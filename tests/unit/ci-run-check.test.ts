@@ -127,6 +127,8 @@ describe('evaluateRun', () => {
     expect(realEvaluateRun({ run }).ok).toBe(false);
     for (const token of ['[skip ci]', '[ci skip]', '[no ci]', '[skip actions]', '[actions skip]'])
       expect(realEvaluateRun({ run, headSubject: token.toUpperCase() }).ok).toBe(false);
+    for (const trailer of ['skip-checks:true', 'skip-checks: true'])
+      expect(realEvaluateRun({ run, headSubject: `Subject\n\n${trailer}` }).ok).toBe(false);
     expect(evaluateRun({ run }).ok).toBe(true);
     expect(evaluateRun({ run: { ...run, conclusion: 'failure' } }).ok).toBe(false);
   });
