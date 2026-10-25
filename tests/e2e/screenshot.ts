@@ -1,6 +1,6 @@
 import { writeFile } from 'node:fs/promises';
 import type { ElectronApplication } from '@playwright/test';
-import { waitFor } from '../wait-for';
+import { after } from '../wait-for';
 
 const pngSignature = '89504e470d0a1a0a';
 
@@ -8,6 +8,7 @@ const pngSignature = '89504e470d0a1a0a';
  * Playwright page.screenshot uses CDP Page.captureScreenshot, which fails
  * intermittently under Xvfb. webContents.capturePage can also throw
  * UnknownVizError until the compositor has a frame, so capture a few times.
+ * Nothing exposes frame readiness, so the gap between attempts is a pause.
  */
 export async function captureDesktop(app: ElectronApplication, path: string) {
   let lastError: unknown;
@@ -24,8 +25,7 @@ export async function captureDesktop(app: ElectronApplication, path: string) {
       return;
     } catch (error) {
       lastError = error;
-      const started = Date.now();
-      await waitFor(() => Date.now() - started >= 150, 1000);
+      await after(150);
     }
   }
   throw lastError;

@@ -252,8 +252,7 @@ describe('official protocol adapter boundaries (synthetic peers)', () => {
       await connection.openSession({});
       const turn = connection.startTurn({ text: 'wait', model: '', mode: 'ask', history: [] });
       const result = expect(turn).rejects.toThrow(/interrupted/);
-      const started = Date.now();
-      await waitFor(() => Date.now() - started >= 100, 1000);
+      await waitFor(() => connection.turnStarted, 1000);
       await connection.cancelTurn();
       await result;
     } finally {

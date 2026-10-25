@@ -27,6 +27,7 @@ export class CodexConnection implements ProviderConnection {
   private rpc: Rpc;
   private threadId = '';
   private turnId = '';
+  turnStarted = false;
   private hasText = false;
   private items = new Map<string, any>();
   private approvals = new Map<string | number, AbortController>();
@@ -169,6 +170,7 @@ export class CodexConnection implements ProviderConnection {
         'Sign into Codex with ChatGPT before sending. Use an API connection for separately billed API chat.',
       );
     this.hasText = false;
+    this.turnStarted = false;
     this.messages.clear();
     this.items.clear();
     await new Promise<void>((resolve, reject) => {
@@ -205,6 +207,7 @@ export class CodexConnection implements ProviderConnection {
         )
         .then((result) => {
           this.turnId = result.turn.id;
+          this.turnStarted = true;
           if (this.context.signal.aborted) void this.cancelTurn();
         }, reject);
     });
@@ -257,7 +260,10 @@ export class CodexConnection implements ProviderConnection {
       this.hasText = true;
       this.context.emit({ type: 'text', text: p.item.review });
     }
-    if (method === 'turn/started') this.turnId = p.turn.id;
+    if (method === 'turn/started') {
+      this.turnId = p.turn.id;
+      this.turnStarted = true;
+    }
     if (method === 'turn/completed') {
       for (const approval of this.approvals.values()) approval.abort();
       this.approvals.clear();

@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 import { Terminals } from '../../src/runtime/terminals';
 import { normalizeTerminalBuffer, terminalHasLine } from '../e2e/terminal-buffer';
-import { waitFor } from '../wait-for';
+import { guardTimeout, waitFor } from '../wait-for';
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -71,9 +71,9 @@ async function runScript(cwd: string) {
       resolveClosed();
     }
   });
-  const timer = setTimeout(function () {
+  const timer = guardTimeout(15000, () => {
     resolveExit(-1);
-  }, 15000);
+  });
   try {
     const text = script();
     const id = terminals.open(cwd, 'session', 'script', text);

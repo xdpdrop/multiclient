@@ -13,8 +13,9 @@ const importedCiRunCheckApi = createRequire(import.meta.url)('../../scripts/ci-r
 const realEvaluateRun = importedCiRunCheckApi.evaluateRun;
 const evaluateRun = (input: object) =>
   realEvaluateRun({ headMessage: 'Refresh the gate', ...input });
-const { parsePositiveRunIdText, parseRerunApprovalLine, parseRunPayload } =
+const { parseCommitMessage, parsePositiveRunIdText, parseRerunApprovalLine, parseRunPayload } =
   importedCiRunCheckApi as {
+    parseCommitMessage: (payload: unknown) => string;
     parsePositiveRunIdText: (text: string) => number | null;
     parseRerunApprovalLine: (line: string, expectedRunId: number) => boolean;
     parseRunPayload: (payload: unknown) => Run;
@@ -76,6 +77,19 @@ describe('parseRerunApprovalLine', () => {
     expect(
       parseRerunApprovalLine(`rerun-approval: 39573175794 by Marek ${date}: "ok"`, 39573175794),
     ).toBe(false);
+  });
+});
+
+describe('parseCommitMessage', () => {
+  it('fails closed when the payload has no message', () => {
+    expect(() => parseCommitMessage({ commit: {} })).toThrow(/missing message/);
+    expect(() => parseCommitMessage({ commit: { message: '' } })).toThrow(/missing message/);
+    expect(() => parseCommitMessage({ commit: { message: ' \n' } })).toThrow(/missing message/);
+    expect(() => parseCommitMessage({ commit: { message: '\nBody' } })).toThrow(/missing message/);
+    expect(() => parseCommitMessage({ commit: { message: '   \nBody' } })).toThrow(
+      /missing message/,
+    );
+    expect(parseCommitMessage({ commit: { message: 'Subject\n\nBody' } })).toBe('Subject\n\nBody');
   });
 });
 
@@ -145,5 +159,35 @@ describe('evaluateRun', () => {
     ])
       expect(realEvaluateRun({ run, headMessage: message }).ok).toBe(false);
     expect(realEvaluateRun({ run, headMessage: 'Subject\n\nskip-checks: false' }).ok).toBe(true);
+  });
+
+  it('rejects skip-checks after Signed-off-by, including case and space variants', () => {
+    const message = (trailer: string) =>
+      `Subject\n\nSigned-off-by: Marek <marek@example.com>\n${trailer}`;
+    for (const trailer of [
+      'skip-checks: true',
+      'Skip-Checks: true',
+      'skip-checks: TRUE',
+      'skip-checks:  true',
+      'skip-checks: true ',
+      'skip-checks : true',
+      'SKIP-CHECKS:\tTrue',
+    ])
+      expect(realEvaluateRun({ run, headMessage: message(trailer) }).ok, trailer).toBe(false);
+    expect(realEvaluateRun({ run, headMessage: message('skip-checks: false') }).ok).toBe(true);
+    expect(realEvaluateRun({ run, headMessage: message('skip-checks: true extra') }).ok).toBe(true);
+  });
+
+  it('rejects a folded skip-checks continuation', () => {
+    expect(
+      realEvaluateRun({
+        run,
+        headMessage: 'Subject\n\nSigned-off-by: Marek <marek@example.com>\nskip-checks:\n true',
+      }).ok,
+    ).toBe(false);
+    expect(realEvaluateRun({ run, headMessage: 'Subject\n\nskip-checks:\r\n\ttrue' }).ok).toBe(
+      false,
+    );
+    expect(realEvaluateRun({ run, headMessage: 'Subject\n\nskip-checks:\n false' }).ok).toBe(true);
   });
 });
