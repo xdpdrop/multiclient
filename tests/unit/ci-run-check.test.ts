@@ -12,7 +12,7 @@ type Run = {
 const importedCiRunCheckApi = createRequire(import.meta.url)('../../scripts/ci-run-check.mjs');
 const realEvaluateRun = importedCiRunCheckApi.evaluateRun;
 const evaluateRun = (input: object) =>
-  realEvaluateRun({ headSubject: 'Refresh the gate', ...input });
+  realEvaluateRun({ headMessage: 'Refresh the gate', ...input });
 const { parsePositiveRunIdText, parseRerunApprovalLine, parseRunPayload } =
   importedCiRunCheckApi as {
     parsePositiveRunIdText: (text: string) => number | null;
@@ -126,8 +126,24 @@ describe('evaluateRun', () => {
   it('fails closed without a head subject and on every CI skip token', () => {
     expect(realEvaluateRun({ run }).ok).toBe(false);
     for (const token of ['[skip ci]', '[ci skip]', '[no ci]', '[skip actions]', '[actions skip]'])
-      expect(realEvaluateRun({ run, headSubject: token.toUpperCase() }).ok).toBe(false);
+      expect(realEvaluateRun({ run, headMessage: token.toUpperCase() }).ok).toBe(false);
     expect(evaluateRun({ run }).ok).toBe(true);
     expect(evaluateRun({ run: { ...run, conclusion: 'failure' } }).ok).toBe(false);
+  });
+
+  it('accepts skip-checks except as a final trailer', () => {
+    expect(realEvaluateRun({ run, headMessage: 'skip-checks: true' }).ok).toBe(true);
+    expect(
+      realEvaluateRun({ run, headMessage: 'Subject\n\nskip-checks: true\n\nAnother paragraph.' })
+        .ok,
+    ).toBe(true);
+    for (const trailer of ['skip-checks:true', 'skip-checks: true'])
+      expect(realEvaluateRun({ run, headMessage: `Subject\n\n${trailer}` }).ok).toBe(false);
+    for (const message of [
+      'Subject\n\nskip-checks: true\n\n',
+      'Subject\r\n\r\nskip-checks: true\r\n\r\n',
+    ])
+      expect(realEvaluateRun({ run, headMessage: message }).ok).toBe(false);
+    expect(realEvaluateRun({ run, headMessage: 'Subject\n\nskip-checks: false' }).ok).toBe(true);
   });
 });
