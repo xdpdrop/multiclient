@@ -190,4 +190,16 @@ describe('evaluateRun', () => {
     );
     expect(realEvaluateRun({ run, headMessage: 'Subject\n\nskip-checks:\n false' }).ok).toBe(true);
   });
+
+  it('rejects a CR-led skip-checks continuation', () => {
+    for (const headMessage of [
+      'Subject\n\nskip-checks:\n\r true',
+      'Subject\n\nskip-checks:\r\n\r true',
+      'Subject\n\nSigned-off-by: Marek <marek@example.com>\nskip-checks:\n\r\ttrue',
+    ])
+      expect(realEvaluateRun({ run, headMessage }).ok, JSON.stringify(headMessage)).toBe(false);
+    expect(realEvaluateRun({ run, headMessage: 'Subject\n\nskip-checks:\n\r false' }).ok).toBe(
+      true,
+    );
+  });
 });
