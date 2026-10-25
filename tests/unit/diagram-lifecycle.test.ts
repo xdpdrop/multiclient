@@ -60,7 +60,9 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers());
 
 it('allows bounded slow initialization without consuming the five-second Mermaid execution budget', async () => {
-  window.loadFile.mockImplementation(() => new Promise((resolve) => setTimeout(resolve, 20000)));
+  window.loadFile.mockImplementation(
+    () => new Promise((resolve) => setTimeout(() => resolve(undefined), 20000)),
+  );
   window.webContents.executeJavaScript.mockImplementation(
     () => new Promise((resolve) => setTimeout(() => resolve('<svg>fixture</svg>'), 4000)),
   );

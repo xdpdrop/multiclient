@@ -44,7 +44,7 @@ async function tree() {
   }
 }
 
-describe.skipIf(process.platform !== 'win32')('Windows kill-on-close job supervision', () => {
+describe.runIf(process.platform === 'win32')('Windows kill-on-close job supervision', () => {
   beforeAll(async () => {
     await exec(process.execPath, [resolve('scripts/build-supervisor.cjs')], { windowsHide: true });
   });

@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 import { Terminals } from '../../src/runtime/terminals';
 import { normalizeTerminalBuffer, terminalHasLine } from '../e2e/terminal-buffer';
+import { waitFor } from '../wait-for';
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -55,9 +56,13 @@ async function runScript(cwd: string) {
   const exited = new Promise<number>((resolve) => {
     resolveExit = resolve;
   });
+  let closed = false;
   let resolveClosed: () => void = () => {};
-  const closed = new Promise<void>((resolve) => {
-    resolveClosed = resolve;
+  new Promise<void>((resolve) => {
+    resolveClosed = () => {
+      closed = true;
+      resolve();
+    };
   });
   const terminals = new Terminals((event) => {
     if (event.type === 'terminal') output += event.data;
@@ -77,7 +82,7 @@ async function runScript(cwd: string) {
   } finally {
     clearTimeout(timer);
     terminals.closeAll();
-    await Promise.race([closed, new Promise((resolve) => setTimeout(resolve, 5000))]);
+    await waitFor(() => closed, 5000).catch(() => {});
   }
 }
 

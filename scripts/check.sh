@@ -28,6 +28,7 @@ run_step models-line models_line
 run_step models-line-test bash scripts/models-line.test.sh
 run_step typecheck npm run typecheck
 run_step lint npm run lint
+run_step test-hygiene node scripts/check-tests.mjs
 run_step test npm test
 run_step build npm run build
 

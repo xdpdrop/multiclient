@@ -11,7 +11,7 @@ import type { ProviderEvent, ProviderId } from '../../src/shared/types';
 // Deliberately excluded from normal CI. This test uses the CLI's existing account.
 const provider = process.env.MULTICLIENT_LIVE_PROVIDER as ProviderId | undefined;
 
-it.skipIf(provider !== 'codex' || process.env.MULTICLIENT_LIVE_BYPASS !== '1')(
+it.runIf(provider === 'codex' && process.env.MULTICLIENT_LIVE_BYPASS === '1')(
   'Bypass edits and executes commands without approvals after resume',
   async () => {
     const dir = await mkdtemp(join(tmpdir(), 'multiclient-bypass-'));
@@ -64,7 +64,7 @@ it.skipIf(provider !== 'codex' || process.env.MULTICLIENT_LIVE_BYPASS !== '1')(
   },
 );
 
-it.skipIf(!provider).each(['edit', 'command'])(
+it.runIf(!!provider).each(['edit', 'command'])(
   'Code mode %s applies approval and preserves a file when denied',
   async (operation) => {
     const dir = await mkdtemp(join(tmpdir(), 'multiclient-code-'));
@@ -136,7 +136,7 @@ it.skipIf(!provider).each(['edit', 'command'])(
     }
   },
 );
-it.skipIf(provider !== 'codex')(
+it.runIf(provider === 'codex')(
   'Codex handshake and read-only policy without inference',
   async () => {
     console.log(`Handshake CLI: ${await version(await findExecutable('codex'))}`);
@@ -159,7 +159,7 @@ it.skipIf(provider !== 'codex')(
     }
   },
 );
-it.skipIf(!provider)(
+it.runIf(!!provider)(
   'live subscription text streaming and native resume in a disposable workspace',
   async () => {
     if (!['codex', 'claude-code', 'cursor'].includes(provider!))
@@ -215,7 +215,7 @@ it.skipIf(!provider)(
   },
 );
 
-it.skipIf(provider !== 'codex')(
+it.runIf(provider === 'codex')(
   'Codex reads project files through workspace tools before and after resume',
   async () => {
     const dir = await mkdtemp(join(tmpdir(), 'multiclient-read-tools-'));
