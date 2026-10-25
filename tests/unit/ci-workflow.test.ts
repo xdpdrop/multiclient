@@ -22,6 +22,14 @@ describe('ci.yml runner matrix', () => {
     expect(outsideMatrix).not.toMatch(/windows-latest|macos-latest/);
   });
 
+  it('runs Lint before Typecheck via ci-step.sh', () => {
+    const lint = verifyJob.indexOf('name: Lint\n');
+    const typecheck = verifyJob.indexOf('name: Typecheck\n');
+    expect(lint).toBeGreaterThan(-1);
+    expect(typecheck).toBeGreaterThan(lint);
+    expect(verifyJob.slice(lint, typecheck)).toMatch(/run: bash scripts\/ci-step\.sh npm run lint/);
+  });
+
   it('keeps the release job on Windows for v* tag pushes', () => {
     const release = workflow.slice(workflow.indexOf('  release:'));
     expect(release).toMatch(
