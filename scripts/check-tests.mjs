@@ -4,18 +4,138 @@ import { fileURLToPath } from 'node:url';
 
 const EXT = new Set(['.ts', '.tsx', '.js', '.mjs', '.cjs']);
 const ISSUE = /#\d+|https?:\/\/github\.com\/[\w.-]+\/[\w.-]+\/issues\/\d+/;
-const SLEEP =
-  /\bsleep\s*\(|setTimeout\s*\(\s*(?:function\b|(?:\(\s*\)\s*=>\s*)?[A-Za-z_$][\w$]*\s*(?:\([^)]*\))?\s*,)|\bwaitFor\s*\([^;]*\bDate\.now\s*\(/;
 const SKIP = /\b(?:skipIf|runIf)\b|\.skip\b/;
+const DELAY_ALLOW = new Set([
+  'tests/wait-for.ts',
+  'tests/e2e/screenshot.ts',
+  'tests/unit/terminal-session.test.ts',
+  'tests/unit/diagram-lifecycle.test.ts',
+]);
+
+function stripComments(text) {
+  let out = '';
+  let i = 0;
+  let quote = '';
+  while (i < text.length) {
+    const c = text[i];
+    const n = text[i + 1];
+    if (quote) {
+      out += c;
+      i++;
+      if (c === '\\' && i < text.length) {
+        out += text[i];
+        i++;
+      } else if (c === quote) quote = '';
+      continue;
+    }
+    if (c === '"' || c === "'" || c === '`') {
+      quote = c;
+      out += c;
+      i++;
+      continue;
+    }
+    if (c === '/' && n === '/') {
+      while (i < text.length && text[i] !== '\n') {
+        out += ' ';
+        i++;
+      }
+      continue;
+    }
+    if (c === '/' && n === '*') {
+      out += '  ';
+      i += 2;
+      while (i < text.length && !(text[i] === '*' && text[i + 1] === '/')) {
+        out += text[i] === '\n' ? '\n' : ' ';
+        i++;
+      }
+      if (i < text.length) {
+        out += '  ';
+        i += 2;
+      }
+      continue;
+    }
+    out += c;
+    i++;
+  }
+  return out;
+}
+
+function lineNumber(text, index) {
+  let line = 1;
+  for (let i = 0; i < index; i++) if (text[i] === '\n') line++;
+  return line;
+}
+
+function endOfCall(text, open) {
+  let depth = 0;
+  let quote = '';
+  for (let i = open; i < text.length; i++) {
+    const c = text[i];
+    if (quote) {
+      if (c === '\\') {
+        i++;
+        continue;
+      }
+      if (c === quote) quote = '';
+      continue;
+    }
+    if (c === '"' || c === "'" || c === '`') {
+      quote = c;
+      continue;
+    }
+    if (c === '(') depth++;
+    else if (c === ')') {
+      depth--;
+      if (depth === 0) return i;
+    }
+  }
+  return text.length - 1;
+}
+
+function bareTimeout(inner) {
+  const body = inner.trim();
+  if (/^(?:async\s+)?function\b/.test(body)) return true;
+  if (/^async\s*\(\s*\)\s*=>/.test(body)) return true;
+  if (/^\(\s*\)\s*=>\s*[A-Za-z_$][\w$]*\s*(?:\([^)]*\))?\s*,/.test(body)) return true;
+  return /^[A-Za-z_$][\w$]*\s*(?:\([^)]*\))?\s*,/.test(body);
+}
+
+function bareSleepLines(text) {
+  const lines = [];
+  const re = /\b(?:sleep|setTimeout|waitFor)\s*\(/g;
+  for (let match = re.exec(text); match; match = re.exec(text)) {
+    const open = match.index + match[0].length - 1;
+    const end = endOfCall(text, open);
+    const name = match[0];
+    const hit =
+      name.startsWith('sleep') ||
+      (name.startsWith('setTimeout') && bareTimeout(text.slice(open + 1, end))) ||
+      (name.startsWith('waitFor') && /\bDate\.now\s*\(/.test(text.slice(match.index, end + 1)));
+    if (hit) lines.push(lineNumber(text, match.index));
+  }
+  return lines;
+}
+
+function delayHelperLines(text) {
+  const lines = [];
+  const re = /\b(?:after|guardTimeout)\s*\(/g;
+  for (let match = re.exec(text); match; match = re.exec(text))
+    lines.push(lineNumber(text, match.index));
+  return lines;
+}
 
 export function scanText(text, file) {
   const lines = text.split(/\r?\n/);
-  const helper = file.replaceAll('\\', '/').endsWith('tests/wait-for.ts');
+  const path = file.replaceAll('\\', '/');
+  const stripped = stripComments(text);
   const out = [];
+  if (!path.endsWith('tests/wait-for.ts'))
+    for (const line of bareSleepLines(stripped)) out.push({ file, line, rule: 'bare-sleep' });
+  if (!DELAY_ALLOW.has(path))
+    for (const line of delayHelperLines(stripped)) out.push({ file, line, rule: 'bare-sleep' });
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const prev = i ? lines[i - 1] : '';
-    if (!helper && SLEEP.test(line)) out.push({ file, line: i + 1, rule: 'bare-sleep' });
     if (SKIP.test(line) && !ISSUE.test(line) && !ISSUE.test(prev))
       out.push({ file, line: i + 1, rule: 'skip-without-issue' });
   }

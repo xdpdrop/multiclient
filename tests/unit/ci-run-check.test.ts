@@ -177,4 +177,17 @@ describe('evaluateRun', () => {
     expect(realEvaluateRun({ run, headMessage: message('skip-checks: false') }).ok).toBe(true);
     expect(realEvaluateRun({ run, headMessage: message('skip-checks: true extra') }).ok).toBe(true);
   });
+
+  it('rejects a folded skip-checks continuation', () => {
+    expect(
+      realEvaluateRun({
+        run,
+        headMessage: 'Subject\n\nSigned-off-by: Marek <marek@example.com>\nskip-checks:\n true',
+      }).ok,
+    ).toBe(false);
+    expect(realEvaluateRun({ run, headMessage: 'Subject\n\nskip-checks:\r\n\ttrue' }).ok).toBe(
+      false,
+    );
+    expect(realEvaluateRun({ run, headMessage: 'Subject\n\nskip-checks:\n false' }).ok).toBe(true);
+  });
 });

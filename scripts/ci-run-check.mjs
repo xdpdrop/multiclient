@@ -54,6 +54,15 @@ export function parseRerunApprovalLine(line, expectedRunId) {
 const SKIP_CI_SUBJECT = /\[(?:skip ci|ci skip|no ci|skip actions|actions skip)\]/i;
 const SKIP_CHECKS_TRAILER = /^skip-checks[ \t]*:[ \t]*true[ \t]*$/i;
 
+function unfoldTrailerLines(block) {
+  const lines = [];
+  for (const line of block.split(/\r?\n/)) {
+    if (lines.length && /^[ \t]/.test(line)) lines[lines.length - 1] += line;
+    else lines.push(line);
+  }
+  return lines;
+}
+
 export function commitSubject(message) {
   if (typeof message !== 'string' || !message.trim()) {
     throw new Error('GitHub commit payload missing message');
@@ -84,7 +93,7 @@ export function evaluateRun({ run, gateText = '', shaPrefix, headMessage }) {
       .split(/\r?\n(?:\r?\n)+/)
       .slice(1)
       .at(-1) ?? '';
-  if (trailerBlock.split(/\r?\n/).some((line) => SKIP_CHECKS_TRAILER.test(line)))
+  if (unfoldTrailerLines(trailerBlock).some((line) => SKIP_CHECKS_TRAILER.test(line)))
     return { ok: false, reason: 'head commit message contains a skip-checks trailer' };
   if (run.status !== 'completed') {
     return { ok: false, reason: `run ${run.id} is not completed (status=${run.status})` };
