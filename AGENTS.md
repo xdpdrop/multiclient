@@ -63,6 +63,8 @@ Requires Node.js 24 or newer, npm, and Git. Use the committed lockfile.
 | Build       | `npm run build`                             |
 | Local check | `bash scripts/check.sh`                     |
 
+Other scripts: `npm run dev`, `npm run test:e2e`, `npm run verify` (typecheck, lint, unit tests, and build; `preverify` runs `scripts/check-node.mjs`), `npm run check` (full local gate including integration harnesses and Playwright). See [scripts/AGENTS.md](scripts/AGENTS.md).
+
 ## CI
 
 The repository is public and CI uses GitHub-hosted runners. In `.github/workflows/ci.yml` on `main`, pull requests and pushes to `main` run `ubuntu-latest` only. `windows-latest` and `macos-latest` run only on `v*` tags and `workflow_dispatch`.
