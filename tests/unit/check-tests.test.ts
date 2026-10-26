@@ -80,6 +80,14 @@ it('flags a sleep after a cast, satisfies, or non-null slash', () => {
   expect(scanText(satisfies, 'tests/x.ts')[0]?.rule).toBe('bare-sleep');
 });
 
+it('flags a sleep after readonly cast or chained non-null slash', () => {
+  const call = `await ${'sleep'}(10)`;
+  const readonlyCast = `const x = y as readonly number / 2; ${call}`;
+  const chainedNonNull = `const z = a!! / 2; ${timed('r, 1')}`;
+  expect(scanText(readonlyCast, 'tests/x.ts')[0]?.rule).toBe('bare-sleep');
+  expect(scanText(chainedNonNull, 'tests/x.ts')[0]?.rule).toBe('bare-sleep');
+});
+
 it('flags an async arrow timeout that takes an argument', () => {
   expect(scanText(timed('async (arg) => r(), 1'), 'tests/x.ts')[0]?.rule).toBe('bare-sleep');
   expect(scanText(timed('async (arg) => { r(); }, 1'), 'tests/x.ts')[0]?.rule).toBe('bare-sleep');

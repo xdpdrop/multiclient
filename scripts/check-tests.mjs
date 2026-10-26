@@ -37,16 +37,55 @@ function isKeyword(kind) {
   return kind >= ts.SyntaxKind.FirstKeyword && kind <= ts.SyntaxKind.LastKeyword;
 }
 
+function typeBracketOpen(kind) {
+  return (
+    kind === ts.SyntaxKind.LessThanToken ||
+    kind === ts.SyntaxKind.OpenParenToken ||
+    kind === ts.SyntaxKind.OpenBracketToken ||
+    kind === ts.SyntaxKind.OpenBraceToken
+  );
+}
+
+function typeBracketClose(kind) {
+  return (
+    kind === ts.SyntaxKind.GreaterThanToken ||
+    kind === ts.SyntaxKind.CloseParenToken ||
+    kind === ts.SyntaxKind.CloseBracketToken ||
+    kind === ts.SyntaxKind.CloseBraceToken
+  );
+}
+
+function endsCastTypeAtTop(kind) {
+  return (
+    kind === ts.SyntaxKind.SemicolonToken ||
+    kind === ts.SyntaxKind.CommaToken ||
+    kind === ts.SyntaxKind.EqualsToken ||
+    kind === ts.SyntaxKind.BarBarToken ||
+    kind === ts.SyntaxKind.AmpersandAmpersandToken ||
+    kind === ts.SyntaxKind.QuestionToken ||
+    kind === ts.SyntaxKind.ColonToken ||
+    kind === ts.SyntaxKind.PlusToken ||
+    kind === ts.SyntaxKind.MinusToken ||
+    kind === ts.SyntaxKind.AsteriskToken ||
+    kind === ts.SyntaxKind.PercentToken
+  );
+}
+
+function slashIsNonNullDivide(prevNonTrivia, lastNonTrivia) {
+  if (lastNonTrivia !== ts.SyntaxKind.ExclamationToken) return false;
+  if (prevNonTrivia === ts.SyntaxKind.ExclamationToken) return true;
+  return (
+    prevNonTrivia === ts.SyntaxKind.Identifier ||
+    prevNonTrivia === ts.SyntaxKind.CloseParenToken ||
+    prevNonTrivia === ts.SyntaxKind.CloseBracketToken
+  );
+}
+
 // `as T` / `satisfies T` and postfix `!` end an expression, so the next slash is division.
-function slashIsRegex(prevNonTrivia, lastNonTrivia) {
+function slashIsRegex(prevNonTrivia, lastNonTrivia, inCastType, typeNest) {
+  if (inCastType && typeNest === 0) return false;
+  if (slashIsNonNullDivide(prevNonTrivia, lastNonTrivia)) return false;
   if (NO_REGEX_AFTER.has(lastNonTrivia)) return false;
-  if (
-    lastNonTrivia === ts.SyntaxKind.ExclamationToken &&
-    (prevNonTrivia === ts.SyntaxKind.Identifier ||
-      prevNonTrivia === ts.SyntaxKind.CloseParenToken ||
-      prevNonTrivia === ts.SyntaxKind.CloseBracketToken)
-  )
-    return false;
   if (
     isKeyword(lastNonTrivia) &&
     (prevNonTrivia === ts.SyntaxKind.AsKeyword || prevNonTrivia === ts.SyntaxKind.SatisfiesKeyword)
@@ -61,13 +100,15 @@ function lex(text) {
   const templateStack = [];
   let prevNonTrivia = ts.SyntaxKind.Unknown;
   let lastNonTrivia = ts.SyntaxKind.Unknown;
+  let inCastType = false;
+  let typeNest = 0;
   while (true) {
     let kind = scanner.scan();
     if (kind === ts.SyntaxKind.EndOfFileToken) break;
     if (!isTrivia(kind)) {
       if (
         (kind === ts.SyntaxKind.SlashToken || kind === ts.SyntaxKind.SlashEqualsToken) &&
-        slashIsRegex(prevNonTrivia, lastNonTrivia)
+        slashIsRegex(prevNonTrivia, lastNonTrivia, inCastType, typeNest)
       ) {
         if (scanner.reScanSlashToken() === ts.SyntaxKind.RegularExpressionLiteral)
           kind = ts.SyntaxKind.RegularExpressionLiteral;
@@ -81,6 +122,19 @@ function lex(text) {
       if (kind === ts.SyntaxKind.TemplateHead) templateStack.push(kind);
       else if (kind === ts.SyntaxKind.OpenBraceToken && templateStack.length)
         templateStack.push(kind);
+      if (kind === ts.SyntaxKind.AsKeyword || kind === ts.SyntaxKind.SatisfiesKeyword) {
+        inCastType = true;
+        typeNest = 0;
+      } else if (inCastType) {
+        if (typeBracketOpen(kind)) typeNest++;
+        else if (typeBracketClose(kind)) typeNest = Math.max(0, typeNest - 1);
+        else if (typeNest === 0 && endsCastTypeAtTop(kind)) inCastType = false;
+      }
+      if (
+        (kind === ts.SyntaxKind.SlashToken || kind === ts.SyntaxKind.SlashEqualsToken) &&
+        !slashIsRegex(prevNonTrivia, lastNonTrivia, inCastType, typeNest)
+      )
+        inCastType = false;
       prevNonTrivia = lastNonTrivia;
       lastNonTrivia = kind;
     }
