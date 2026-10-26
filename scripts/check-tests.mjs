@@ -21,6 +21,8 @@ const NO_REGEX_AFTER = new Set([
   ts.SyntaxKind.TrueKeyword,
   ts.SyntaxKind.FalseKeyword,
   ts.SyntaxKind.NullKeyword,
+  ts.SyntaxKind.UndefinedKeyword,
+  ts.SyntaxKind.PrivateIdentifier,
 ]);
 
 function isTrivia(kind) {
@@ -121,6 +123,7 @@ function lex(text) {
   let inCastType = false;
   let typeNest = 0;
   let exclaimPostfix = false;
+  let lastNonTriviaEnd = 0;
   while (true) {
     let kind = scanner.scan();
     if (kind === ts.SyntaxKind.EndOfFileToken) break;
@@ -156,11 +159,15 @@ function lex(text) {
       )
         inCastType = false;
       if (kind === ts.SyntaxKind.ExclamationToken) {
-        if (lastNonTrivia !== ts.SyntaxKind.ExclamationToken)
+        // A line break ends the postfix chain, so this `!` is prefix.
+        const lineBreak = text.slice(lastNonTriviaEnd, scanner.getTokenStart()).includes('\n');
+        if (lineBreak) exclaimPostfix = false;
+        else if (lastNonTrivia !== ts.SyntaxKind.ExclamationToken)
           exclaimPostfix = NO_REGEX_AFTER.has(lastNonTrivia);
       } else exclaimPostfix = false;
       prevNonTrivia = lastNonTrivia;
       lastNonTrivia = kind;
+      lastNonTriviaEnd = scanner.getTokenEnd();
     }
     tokens.push({ kind, pos: scanner.getTokenStart(), end: scanner.getTokenEnd() });
   }

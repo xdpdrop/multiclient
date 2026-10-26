@@ -106,6 +106,17 @@ it('does not flag a regex after a finished cast or a prefix bang', () => {
     expect(scanText(sample, 'tests/x.ts'), sample).toEqual([]);
 });
 
+it('does not flag a regex after a bang on the next line', () => {
+  const call = `${'sleep'}(1)`;
+  expect(scanText(`true\n!/${call}/`, 'tests/x.ts')).toEqual([]);
+});
+
+it('flags a sleep after undefined or a private name and chained non-null slash', () => {
+  const call = `${'sleep'}(1)`;
+  expect(scanText(`undefined!! / ${call} / 2`, 'tests/x.ts')[0]?.rule).toBe('bare-sleep');
+  expect(scanText(`this.#x!! / ${call} / 2`, 'tests/x.ts')[0]?.rule).toBe('bare-sleep');
+});
+
 it('flags an async arrow timeout that takes an argument', () => {
   expect(scanText(timed('async (arg) => r(), 1'), 'tests/x.ts')[0]?.rule).toBe('bare-sleep');
   expect(scanText(timed('async (arg) => { r(); }, 1'), 'tests/x.ts')[0]?.rule).toBe('bare-sleep');
