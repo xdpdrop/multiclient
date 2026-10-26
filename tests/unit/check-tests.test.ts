@@ -80,6 +80,43 @@ it('flags a sleep after a cast, satisfies, or non-null slash', () => {
   expect(scanText(satisfies, 'tests/x.ts')[0]?.rule).toBe('bare-sleep');
 });
 
+it('flags a sleep after readonly cast or chained non-null slash', () => {
+  const call = `await ${'sleep'}(10)`;
+  const readonlyCast = `const x = y as readonly number / 2; ${call}`;
+  const chainedNonNull = `const z = a!! / 2; ${timed('r, 1')}`;
+  expect(scanText(readonlyCast, 'tests/x.ts')[0]?.rule).toBe('bare-sleep');
+  expect(scanText(chainedNonNull, 'tests/x.ts')[0]?.rule).toBe('bare-sleep');
+});
+
+it('does not flag a regex after a finished cast or a prefix bang', () => {
+  const call = `${'sleep'}(1)`;
+  const later = `return /${call}/`;
+  for (const sample of [
+    later,
+    `(y as Foo<Bar>) => /${call}/`,
+    `z > /${call}/`,
+    `const x = y as const\nz > /${call}/`,
+    `const x = y as const\n${later}`,
+    `const x = y as T[]\n${later}`,
+    `const x = y as readonly number\n${later}`,
+    `import { a as b } from 'm'\n${later}`,
+    `!!/${call}/`,
+    `+!!/${call}/`,
+  ])
+    expect(scanText(sample, 'tests/x.ts'), sample).toEqual([]);
+});
+
+it('does not flag a regex after a bang on the next line', () => {
+  const call = `${'sleep'}(1)`;
+  expect(scanText(`true\n!/${call}/`, 'tests/x.ts')).toEqual([]);
+});
+
+it('flags a sleep after undefined or a private name and chained non-null slash', () => {
+  const call = `${'sleep'}(1)`;
+  expect(scanText(`undefined!! / ${call} / 2`, 'tests/x.ts')[0]?.rule).toBe('bare-sleep');
+  expect(scanText(`this.#x!! / ${call} / 2`, 'tests/x.ts')[0]?.rule).toBe('bare-sleep');
+});
+
 it('flags an async arrow timeout that takes an argument', () => {
   expect(scanText(timed('async (arg) => r(), 1'), 'tests/x.ts')[0]?.rule).toBe('bare-sleep');
   expect(scanText(timed('async (arg) => { r(); }, 1'), 'tests/x.ts')[0]?.rule).toBe('bare-sleep');
