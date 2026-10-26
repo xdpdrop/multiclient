@@ -55,36 +55,54 @@ function typeBracketClose(kind) {
   );
 }
 
-function endsCastTypeAtTop(kind) {
-  return (
-    kind === ts.SyntaxKind.SemicolonToken ||
-    kind === ts.SyntaxKind.CommaToken ||
-    kind === ts.SyntaxKind.EqualsToken ||
-    kind === ts.SyntaxKind.BarBarToken ||
-    kind === ts.SyntaxKind.AmpersandAmpersandToken ||
-    kind === ts.SyntaxKind.QuestionToken ||
-    kind === ts.SyntaxKind.ColonToken ||
-    kind === ts.SyntaxKind.PlusToken ||
-    kind === ts.SyntaxKind.MinusToken ||
-    kind === ts.SyntaxKind.AsteriskToken ||
-    kind === ts.SyntaxKind.PercentToken
-  );
-}
+const CAST_TYPE_KEYWORD = new Set([
+  ts.SyntaxKind.AbstractKeyword,
+  ts.SyntaxKind.AnyKeyword,
+  ts.SyntaxKind.BigIntKeyword,
+  ts.SyntaxKind.BooleanKeyword,
+  ts.SyntaxKind.ConstKeyword,
+  ts.SyntaxKind.ExtendsKeyword,
+  ts.SyntaxKind.FalseKeyword,
+  ts.SyntaxKind.ImportKeyword,
+  ts.SyntaxKind.InferKeyword,
+  ts.SyntaxKind.IntrinsicKeyword,
+  ts.SyntaxKind.KeyOfKeyword,
+  ts.SyntaxKind.NeverKeyword,
+  ts.SyntaxKind.NewKeyword,
+  ts.SyntaxKind.NullKeyword,
+  ts.SyntaxKind.NumberKeyword,
+  ts.SyntaxKind.ObjectKeyword,
+  ts.SyntaxKind.ReadonlyKeyword,
+  ts.SyntaxKind.StringKeyword,
+  ts.SyntaxKind.SymbolKeyword,
+  ts.SyntaxKind.ThisKeyword,
+  ts.SyntaxKind.TrueKeyword,
+  ts.SyntaxKind.TypeOfKeyword,
+  ts.SyntaxKind.UndefinedKeyword,
+  ts.SyntaxKind.UniqueKeyword,
+  ts.SyntaxKind.UnknownKeyword,
+  ts.SyntaxKind.VoidKeyword,
+]);
 
-function slashIsNonNullDivide(prevNonTrivia, lastNonTrivia) {
-  if (lastNonTrivia !== ts.SyntaxKind.ExclamationToken) return false;
-  if (prevNonTrivia === ts.SyntaxKind.ExclamationToken) return true;
+function continuesCastType(kind) {
   return (
-    prevNonTrivia === ts.SyntaxKind.Identifier ||
-    prevNonTrivia === ts.SyntaxKind.CloseParenToken ||
-    prevNonTrivia === ts.SyntaxKind.CloseBracketToken
+    kind === ts.SyntaxKind.Identifier ||
+    kind === ts.SyntaxKind.StringLiteral ||
+    kind === ts.SyntaxKind.NumericLiteral ||
+    kind === ts.SyntaxKind.BigIntLiteral ||
+    kind === ts.SyntaxKind.NoSubstitutionTemplateLiteral ||
+    kind === ts.SyntaxKind.DotToken ||
+    kind === ts.SyntaxKind.BarToken ||
+    kind === ts.SyntaxKind.AmpersandToken ||
+    kind === ts.SyntaxKind.EqualsGreaterThanToken ||
+    CAST_TYPE_KEYWORD.has(kind)
   );
 }
 
 // `as T` / `satisfies T` and postfix `!` end an expression, so the next slash is division.
-function slashIsRegex(prevNonTrivia, lastNonTrivia, inCastType, typeNest) {
+function slashIsRegex(prevNonTrivia, lastNonTrivia, inCastType, typeNest, exclaimPostfix) {
   if (inCastType && typeNest === 0) return false;
-  if (slashIsNonNullDivide(prevNonTrivia, lastNonTrivia)) return false;
+  if (lastNonTrivia === ts.SyntaxKind.ExclamationToken && exclaimPostfix) return false;
   if (NO_REGEX_AFTER.has(lastNonTrivia)) return false;
   if (
     isKeyword(lastNonTrivia) &&
@@ -102,13 +120,14 @@ function lex(text) {
   let lastNonTrivia = ts.SyntaxKind.Unknown;
   let inCastType = false;
   let typeNest = 0;
+  let exclaimPostfix = false;
   while (true) {
     let kind = scanner.scan();
     if (kind === ts.SyntaxKind.EndOfFileToken) break;
     if (!isTrivia(kind)) {
       if (
         (kind === ts.SyntaxKind.SlashToken || kind === ts.SyntaxKind.SlashEqualsToken) &&
-        slashIsRegex(prevNonTrivia, lastNonTrivia, inCastType, typeNest)
+        slashIsRegex(prevNonTrivia, lastNonTrivia, inCastType, typeNest, exclaimPostfix)
       ) {
         if (scanner.reScanSlashToken() === ts.SyntaxKind.RegularExpressionLiteral)
           kind = ts.SyntaxKind.RegularExpressionLiteral;
@@ -126,15 +145,20 @@ function lex(text) {
         inCastType = true;
         typeNest = 0;
       } else if (inCastType) {
-        if (typeBracketOpen(kind)) typeNest++;
-        else if (typeBracketClose(kind)) typeNest = Math.max(0, typeNest - 1);
-        else if (typeNest === 0 && endsCastTypeAtTop(kind)) inCastType = false;
+        // Nested closers stay in the type; a nest-0 `)` or `>` cannot.
+        if (typeNest > 0 && typeBracketClose(kind)) typeNest--;
+        else if (typeBracketOpen(kind)) typeNest++;
+        else if (typeNest === 0 && !continuesCastType(kind)) inCastType = false;
       }
       if (
         (kind === ts.SyntaxKind.SlashToken || kind === ts.SyntaxKind.SlashEqualsToken) &&
-        !slashIsRegex(prevNonTrivia, lastNonTrivia, inCastType, typeNest)
+        !slashIsRegex(prevNonTrivia, lastNonTrivia, inCastType, typeNest, exclaimPostfix)
       )
         inCastType = false;
+      if (kind === ts.SyntaxKind.ExclamationToken) {
+        if (lastNonTrivia !== ts.SyntaxKind.ExclamationToken)
+          exclaimPostfix = NO_REGEX_AFTER.has(lastNonTrivia);
+      } else exclaimPostfix = false;
       prevNonTrivia = lastNonTrivia;
       lastNonTrivia = kind;
     }
