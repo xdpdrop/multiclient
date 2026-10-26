@@ -53,4 +53,19 @@ describe('.gitattributes line endings', () => {
     const notLf = files.filter((_, i) => attrs[i * 3 + 2] !== 'lf');
     expect(notLf).toEqual([]);
   });
+
+  it('keeps png, ico, and webm binary so Git does not treat asset bytes as text', () => {
+    const files = execFileSync('git', ['ls-files', '-z', '--', '*.png', '*.ico', '*.webm'], {
+      encoding: 'utf8',
+    })
+      .split('\0')
+      .filter(Boolean);
+    expect(files.length).toBeGreaterThan(0);
+    const attrs = execFileSync('git', ['check-attr', '-z', 'text', '--stdin'], {
+      encoding: 'utf8',
+      input: files.join('\0'),
+    }).split('\0');
+    const notBinary = files.filter((_, i) => attrs[i * 3 + 2] !== 'unset');
+    expect(notBinary).toEqual([]);
+  });
 });
