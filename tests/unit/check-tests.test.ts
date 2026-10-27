@@ -132,6 +132,47 @@ it('scans comments inside template interpolations', () => {
   expect(scanText(live, 'tests/x.ts')[0]?.rule).toBe('bare-sleep');
 });
 
+it('does not flag a regex after an import specifier or a block close', () => {
+  const call = `${'sleep'}(1)`;
+  expect(scanText(`import { a } from "./a"\n/${call}/.test(s)`, 'tests/x.ts')).toEqual([]);
+  expect(scanText(`if (x) {}\n/${call}/.test(s)`, 'tests/x.ts')).toEqual([]);
+});
+
+it('flags a sleep after an object division or a function body', () => {
+  const call = `await ${'sleep'}(10)`;
+  expect(scanText(`const o = {} / 2; ${call}`, 'tests/x.ts')[0]?.rule).toBe('bare-sleep');
+  expect(scanText(`function f() {}\n${call}`, 'tests/x.ts')[0]?.rule).toBe('bare-sleep');
+});
+
+it('flags a sleep divided out of a function or class expression', () => {
+  const call = `${'sleep'}(1)`;
+  expect(scanText(`function(){}/2; ${call}`, 'tests/x.ts')[0]?.rule).toBe('bare-sleep');
+  expect(scanText(`class{}/${call}`, 'tests/x.ts')[0]?.rule).toBe('bare-sleep');
+});
+
+it('flags a sleep divided out of a named function after a ternary colon', () => {
+  const call = `${'sleep'}(1)`;
+  expect(scanText(`x ? a : function f(){}/2; ${call}`, 'tests/x.ts')[0]?.rule).toBe('bare-sleep');
+});
+
+it('flags a sleep divided out of a class after for-of', () => {
+  const call = `${'sleep'}(1)`;
+  expect(scanText(`for (const y of class C{}/${call})`, 'tests/x.ts')[0]?.rule).toBe('bare-sleep');
+});
+
+it('flags a sleep after a decorated class', () => {
+  const call = `${'sleep'}(1)`;
+  expect(scanText(`@dec class C{}\n/${call}/`, 'tests/x.ts')[0]?.rule).toBe('bare-sleep');
+});
+
+it('does not flag a regex after an import attribute', () => {
+  const call = `${'sleep'}(1)`;
+  const withAttr = `import x from "./a" with { type: "json" }\n/${call}/.test(s)`;
+  const assertAttr = `import x from "./a" assert { type: "json" }\n/${call}/.test(s)`;
+  expect(scanText(withAttr, 'tests/x.ts')).toEqual([]);
+  expect(scanText(assertAttr, 'tests/x.ts')).toEqual([]);
+});
+
 it('rejects each planted sleep form in the test tree', () => {
   const call = `${'sleep'}(1)`;
   const root = mkdtempSync(join('tests/unit', '.plant-'));

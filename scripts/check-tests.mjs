@@ -102,9 +102,21 @@ function continuesCastType(kind) {
 }
 
 // `as T` / `satisfies T` and postfix `!` end an expression, so the next slash is division.
-function slashIsRegex(prevNonTrivia, lastNonTrivia, inCastType, typeNest, exclaimPostfix) {
+function slashIsRegex(
+  prevNonTrivia,
+  lastNonTrivia,
+  inCastType,
+  typeNest,
+  exclaimPostfix,
+  closeBraceRegex,
+  moduleSpecifier,
+) {
   if (inCastType && typeNest === 0) return false;
   if (lastNonTrivia === ts.SyntaxKind.ExclamationToken && exclaimPostfix) return false;
+  // A module specifier, import attribute, or statement `}` ends the statement, so `/` is a regex.
+  // Function and class expressions stay division, so `function(){}/2` does not hide a later call.
+  if (lastNonTrivia === ts.SyntaxKind.CloseBraceToken) return closeBraceRegex;
+  if (lastNonTrivia === ts.SyntaxKind.StringLiteral && moduleSpecifier) return true;
   if (NO_REGEX_AFTER.has(lastNonTrivia)) return false;
   if (
     isKeyword(lastNonTrivia) &&
@@ -112,6 +124,180 @@ function slashIsRegex(prevNonTrivia, lastNonTrivia, inCastType, typeNest, exclai
   )
     return false;
   return true;
+}
+
+function opensStatement(st, prev) {
+  return (
+    prev === ts.SyntaxKind.Unknown ||
+    prev === ts.SyntaxKind.SemicolonToken ||
+    prev === ts.SyntaxKind.ElseKeyword ||
+    prev === ts.SyntaxKind.DoKeyword ||
+    prev === ts.SyntaxKind.TryKeyword ||
+    prev === ts.SyntaxKind.FinallyKeyword ||
+    prev === ts.SyntaxKind.CatchKeyword ||
+    prev === ts.SyntaxKind.EqualsGreaterThanToken ||
+    prev === ts.SyntaxKind.CloseParenToken ||
+    prev === ts.SyntaxKind.ImportKeyword ||
+    prev === ts.SyntaxKind.ExportKeyword ||
+    (prev === ts.SyntaxKind.OpenBraceToken && st.frames[st.frames.length - 1] === true) ||
+    (prev === ts.SyntaxKind.CloseBraceToken && st.closeBraceRegex)
+  );
+}
+
+function typeNameEnd(prev) {
+  return (
+    prev === ts.SyntaxKind.AnyKeyword ||
+    prev === ts.SyntaxKind.BigIntKeyword ||
+    prev === ts.SyntaxKind.BooleanKeyword ||
+    prev === ts.SyntaxKind.FalseKeyword ||
+    prev === ts.SyntaxKind.NeverKeyword ||
+    prev === ts.SyntaxKind.NullKeyword ||
+    prev === ts.SyntaxKind.NumberKeyword ||
+    prev === ts.SyntaxKind.ObjectKeyword ||
+    prev === ts.SyntaxKind.StringKeyword ||
+    prev === ts.SyntaxKind.SymbolKeyword ||
+    prev === ts.SyntaxKind.ThisKeyword ||
+    prev === ts.SyntaxKind.TrueKeyword ||
+    prev === ts.SyntaxKind.UndefinedKeyword ||
+    prev === ts.SyntaxKind.UnknownKeyword ||
+    prev === ts.SyntaxKind.VoidKeyword
+  );
+}
+
+function bodyPrev(prev) {
+  return (
+    prev === ts.SyntaxKind.Identifier ||
+    prev === ts.SyntaxKind.ClassKeyword ||
+    prev === ts.SyntaxKind.CloseParenToken ||
+    prev === ts.SyntaxKind.CloseBraceToken ||
+    prev === ts.SyntaxKind.CloseBracketToken ||
+    prev === ts.SyntaxKind.GreaterThanToken ||
+    prev === ts.SyntaxKind.GreaterThanGreaterThanToken ||
+    prev === ts.SyntaxKind.GreaterThanGreaterThanGreaterThanToken ||
+    typeNameEnd(prev)
+  );
+}
+
+function isBeforeExpr(kind) {
+  return (
+    (kind >= ts.SyntaxKind.LessThanToken &&
+      kind <= ts.SyntaxKind.CaretEqualsToken &&
+      kind !== ts.SyntaxKind.PlusPlusToken &&
+      kind !== ts.SyntaxKind.MinusMinusToken &&
+      kind !== ts.SyntaxKind.LessThanSlashToken) ||
+    kind === ts.SyntaxKind.OpenParenToken ||
+    kind === ts.SyntaxKind.OpenBracketToken ||
+    kind === ts.SyntaxKind.CommaToken ||
+    kind === ts.SyntaxKind.DotDotDotToken ||
+    kind === ts.SyntaxKind.CaseKeyword ||
+    kind === ts.SyntaxKind.ReturnKeyword ||
+    kind === ts.SyntaxKind.ThrowKeyword ||
+    kind === ts.SyntaxKind.NewKeyword ||
+    kind === ts.SyntaxKind.ExtendsKeyword ||
+    kind === ts.SyntaxKind.InKeyword ||
+    kind === ts.SyntaxKind.InstanceOfKeyword ||
+    kind === ts.SyntaxKind.TypeOfKeyword ||
+    kind === ts.SyntaxKind.VoidKeyword ||
+    kind === ts.SyntaxKind.DeleteKeyword ||
+    kind === ts.SyntaxKind.YieldKeyword ||
+    kind === ts.SyntaxKind.AwaitKeyword
+  );
+}
+
+function exprFrame(st) {
+  return st.frames.length > 0 && st.frames[st.frames.length - 1] === false;
+}
+
+// Ternary `:`, for-of `of`, and a decorator are expression context. A named function
+// or class there stays division, so `}` does not hide the next call inside a regex.
+function exprIntroducer(st, prev, beforePrev) {
+  if (prev === ts.SyntaxKind.ColonToken) return st.lastColonTernary || exprFrame(st);
+  if (prev === ts.SyntaxKind.OpenBraceToken) return exprFrame(st);
+  if (
+    prev === ts.SyntaxKind.Unknown ||
+    prev === ts.SyntaxKind.SemicolonToken ||
+    prev === ts.SyntaxKind.ElseKeyword ||
+    prev === ts.SyntaxKind.DoKeyword ||
+    prev === ts.SyntaxKind.DefaultKeyword ||
+    prev === ts.SyntaxKind.ExportKeyword
+  )
+    return false;
+  if (prev === ts.SyntaxKind.OfKeyword) return true;
+  if (prev === ts.SyntaxKind.Identifier)
+    return st.prevWord === 'of' || beforePrev === ts.SyntaxKind.AtToken;
+  return isBeforeExpr(prev);
+}
+
+function noteSyntax(st, kind, prev, beforePrev, word, lineBreak) {
+  try {
+    if (
+      kind === ts.SyntaxKind.StringLiteral &&
+      (prev === ts.SyntaxKind.FromKeyword || prev === ts.SyntaxKind.ImportKeyword)
+    )
+      st.expectAttr = true;
+    else if (st.expectAttr === true && (word === 'with' || word === 'assert'))
+      st.expectAttr = 'brace';
+    else if (kind !== ts.SyntaxKind.OpenBraceToken) st.expectAttr = false;
+    if (kind === ts.SyntaxKind.QuestionToken) st.questions.push(st.frames.length);
+    if (kind === ts.SyntaxKind.FunctionKeyword || kind === ts.SyntaxKind.ClassKeyword) {
+      const intro = prev === ts.SyntaxKind.AsyncKeyword ? beforePrev : prev;
+      const introBefore = prev === ts.SyntaxKind.AsyncKeyword ? undefined : beforePrev;
+      const introBreak = prev === ts.SyntaxKind.AsyncKeyword ? st.breakBefore : lineBreak;
+      st.bodies.push({
+        expr:
+          exprIntroducer(st, intro, introBefore) &&
+          !(intro === ts.SyntaxKind.ReturnKeyword && introBreak),
+        named: false,
+        closed: false,
+        isDefault: intro === ts.SyntaxKind.DefaultKeyword,
+      });
+    }
+    const top = st.bodies[st.bodies.length - 1];
+    if (
+      top &&
+      !top.closed &&
+      kind !== ts.SyntaxKind.FunctionKeyword &&
+      kind !== ts.SyntaxKind.ClassKeyword
+    ) {
+      if (kind === ts.SyntaxKind.Identifier) top.named = true;
+      else if (
+        kind === ts.SyntaxKind.OpenParenToken ||
+        kind === ts.SyntaxKind.LessThanToken ||
+        kind === ts.SyntaxKind.ExtendsKeyword
+      )
+        top.closed = true;
+    }
+    if (kind === ts.SyntaxKind.SemicolonToken) {
+      st.bodies.length = 0;
+      while (st.questions.length && st.questions[st.questions.length - 1] >= st.frames.length)
+        st.questions.pop();
+    }
+    if (kind === ts.SyntaxKind.OpenBraceToken) {
+      const attr = st.expectAttr === 'brace';
+      st.expectAttr = false;
+      let stmt = opensStatement(st, prev);
+      const pending = st.bodies[st.bodies.length - 1];
+      if (pending && bodyPrev(prev)) {
+        st.bodies.pop();
+        const expr = pending.expr || (!pending.named && !pending.isDefault);
+        stmt = !expr;
+      }
+      if (attr) stmt = true;
+      st.frames.push(stmt);
+    } else if (kind === ts.SyntaxKind.CloseBraceToken) {
+      st.closeBraceRegex = st.frames.length ? st.frames.pop() : true;
+      while (st.questions.length && st.questions[st.questions.length - 1] > st.frames.length)
+        st.questions.pop();
+    }
+    if (kind === ts.SyntaxKind.ColonToken) {
+      const depth = st.questions.length ? st.questions[st.questions.length - 1] : -1;
+      st.lastColonTernary = depth === st.frames.length;
+      if (st.lastColonTernary) st.questions.pop();
+    } else if (kind !== ts.SyntaxKind.AsyncKeyword) st.lastColonTernary = false;
+  } finally {
+    st.prevWord = word;
+    st.breakBefore = lineBreak;
+  }
 }
 
 function lex(text) {
@@ -124,19 +310,40 @@ function lex(text) {
   let typeNest = 0;
   let exclaimPostfix = false;
   let lastNonTriviaEnd = 0;
+  const brace = {
+    frames: [],
+    bodies: [],
+    closeBraceRegex: false,
+    moduleSpecifier: false,
+    expectAttr: false,
+    prevWord: '',
+    breakBefore: false,
+    questions: [],
+    lastColonTernary: false,
+  };
   while (true) {
     let kind = scanner.scan();
     if (kind === ts.SyntaxKind.EndOfFileToken) break;
     if (!isTrivia(kind)) {
+      let templateClose = false;
       if (
         (kind === ts.SyntaxKind.SlashToken || kind === ts.SyntaxKind.SlashEqualsToken) &&
-        slashIsRegex(prevNonTrivia, lastNonTrivia, inCastType, typeNest, exclaimPostfix)
+        slashIsRegex(
+          prevNonTrivia,
+          lastNonTrivia,
+          inCastType,
+          typeNest,
+          exclaimPostfix,
+          brace.closeBraceRegex,
+          brace.moduleSpecifier,
+        )
       ) {
         if (scanner.reScanSlashToken() === ts.SyntaxKind.RegularExpressionLiteral)
           kind = ts.SyntaxKind.RegularExpressionLiteral;
       } else if (kind === ts.SyntaxKind.CloseBraceToken && templateStack.length) {
         const last = templateStack[templateStack.length - 1];
         if (last === ts.SyntaxKind.TemplateHead) {
+          templateClose = true;
           kind = scanner.reScanTemplateToken(false);
           if (kind === ts.SyntaxKind.TemplateTail) templateStack.pop();
         } else templateStack.pop();
@@ -155,9 +362,32 @@ function lex(text) {
       }
       if (
         (kind === ts.SyntaxKind.SlashToken || kind === ts.SyntaxKind.SlashEqualsToken) &&
-        !slashIsRegex(prevNonTrivia, lastNonTrivia, inCastType, typeNest, exclaimPostfix)
+        !slashIsRegex(
+          prevNonTrivia,
+          lastNonTrivia,
+          inCastType,
+          typeNest,
+          exclaimPostfix,
+          brace.closeBraceRegex,
+          brace.moduleSpecifier,
+        )
       )
         inCastType = false;
+      if (!templateClose) {
+        const start = scanner.getTokenStart();
+        noteSyntax(
+          brace,
+          kind,
+          lastNonTrivia,
+          prevNonTrivia,
+          text.slice(start, scanner.getTokenEnd()),
+          text.slice(lastNonTriviaEnd, start).includes('\n'),
+        );
+      }
+      brace.moduleSpecifier =
+        kind === ts.SyntaxKind.StringLiteral &&
+        (lastNonTrivia === ts.SyntaxKind.FromKeyword ||
+          lastNonTrivia === ts.SyntaxKind.ImportKeyword);
       if (kind === ts.SyntaxKind.ExclamationToken) {
         // A line break ends the postfix chain, so this `!` is prefix.
         const lineBreak = text.slice(lastNonTriviaEnd, scanner.getTokenStart()).includes('\n');
