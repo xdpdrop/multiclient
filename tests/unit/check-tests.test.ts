@@ -288,6 +288,34 @@ it('does not flag a regex after a mapped type literal', () => {
   );
 });
 
+it('flags a sleep divided after type, namespace, or module used as an identifier', () => {
+  const call = `${'sleep'}(1)`;
+  expect(scanText(`type = {a:1} / ${call}`, 'tests/x.ts')[0]?.rule).toBe('bare-sleep');
+  expect(scanText(`this.module = {} / ${call}`, 'tests/x.ts')[0]?.rule).toBe('bare-sleep');
+  expect(scanText(`namespace(x)\nconst y = {} / ${call}`, 'tests/x.ts')[0]?.rule).toBe(
+    'bare-sleep',
+  );
+  expect(scanText(`class C {\n  module = {} / ${call}\n}`, 'tests/x.ts')[0]?.rule).toBe(
+    'bare-sleep',
+  );
+});
+
+it('does not flag a regex after a mapped type continued to the statement end', () => {
+  const call = `${'sleep'}(1)`;
+  const mapped = '{ [K in keyof T]: T[K] }';
+  expect(scanText(`type M = ${mapped} | U\n/${call}/`, 'tests/x.ts')).toEqual([]);
+  expect(scanText(`type M = ${mapped} & U\n/${call}/`, 'tests/x.ts')).toEqual([]);
+  expect(scanText(`type M = ${mapped}[K]\n/${call}/`, 'tests/x.ts')).toEqual([]);
+  expect(scanText(`type M = T extends U ? ${mapped} : V\n/${call}/`, 'tests/x.ts')).toEqual([]);
+  expect(scanText(`type M = T extends U ? ${mapped} : { a: 1 }\n/${call}/`, 'tests/x.ts')).toEqual(
+    [],
+  );
+  expect(scanText(`type M = ${mapped} | U\na / ${call}`, 'tests/x.ts')[0]?.rule).toBe('bare-sleep');
+  expect(scanText(`type M = T extends U ? ${mapped} : V\na / ${call}`, 'tests/x.ts')[0]?.rule).toBe(
+    'bare-sleep',
+  );
+});
+
 it('does not flag a regex after an import attribute', () => {
   const call = `${'sleep'}(1)`;
   const withAttr = `import x from "./a" with { type: "json" }\n/${call}/.test(s)`;
