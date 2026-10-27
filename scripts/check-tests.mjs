@@ -204,9 +204,15 @@ function isBeforeExpr(kind) {
   );
 }
 
-function exprIntroducer(st, prev) {
-  if (prev === ts.SyntaxKind.ColonToken || prev === ts.SyntaxKind.OpenBraceToken)
-    return st.frames.length > 0 && st.frames[st.frames.length - 1] === false;
+function exprFrame(st) {
+  return st.frames.length > 0 && st.frames[st.frames.length - 1] === false;
+}
+
+// Ternary `:`, for-of `of`, and a decorator are expression context. A named function
+// or class there stays division, so `}` does not hide the next call inside a regex.
+function exprIntroducer(st, prev, beforePrev) {
+  if (prev === ts.SyntaxKind.ColonToken) return st.lastColonTernary || exprFrame(st);
+  if (prev === ts.SyntaxKind.OpenBraceToken) return exprFrame(st);
   if (
     prev === ts.SyntaxKind.Unknown ||
     prev === ts.SyntaxKind.SemicolonToken ||
@@ -216,7 +222,9 @@ function exprIntroducer(st, prev) {
     prev === ts.SyntaxKind.ExportKeyword
   )
     return false;
-  if (prev === ts.SyntaxKind.Identifier) return st.prevWord === 'of';
+  if (prev === ts.SyntaxKind.OfKeyword) return true;
+  if (prev === ts.SyntaxKind.Identifier)
+    return st.prevWord === 'of' || beforePrev === ts.SyntaxKind.AtToken;
   return isBeforeExpr(prev);
 }
 
@@ -230,11 +238,15 @@ function noteSyntax(st, kind, prev, beforePrev, word, lineBreak) {
     else if (st.expectAttr === true && (word === 'with' || word === 'assert'))
       st.expectAttr = 'brace';
     else if (kind !== ts.SyntaxKind.OpenBraceToken) st.expectAttr = false;
+    if (kind === ts.SyntaxKind.QuestionToken) st.questions.push(st.frames.length);
     if (kind === ts.SyntaxKind.FunctionKeyword || kind === ts.SyntaxKind.ClassKeyword) {
       const intro = prev === ts.SyntaxKind.AsyncKeyword ? beforePrev : prev;
+      const introBefore = prev === ts.SyntaxKind.AsyncKeyword ? undefined : beforePrev;
       const introBreak = prev === ts.SyntaxKind.AsyncKeyword ? st.breakBefore : lineBreak;
       st.bodies.push({
-        expr: exprIntroducer(st, intro) && !(intro === ts.SyntaxKind.ReturnKeyword && introBreak),
+        expr:
+          exprIntroducer(st, intro, introBefore) &&
+          !(intro === ts.SyntaxKind.ReturnKeyword && introBreak),
         named: false,
         closed: false,
         isDefault: intro === ts.SyntaxKind.DefaultKeyword,
@@ -255,7 +267,11 @@ function noteSyntax(st, kind, prev, beforePrev, word, lineBreak) {
       )
         top.closed = true;
     }
-    if (kind === ts.SyntaxKind.SemicolonToken) st.bodies.length = 0;
+    if (kind === ts.SyntaxKind.SemicolonToken) {
+      st.bodies.length = 0;
+      while (st.questions.length && st.questions[st.questions.length - 1] >= st.frames.length)
+        st.questions.pop();
+    }
     if (kind === ts.SyntaxKind.OpenBraceToken) {
       const attr = st.expectAttr === 'brace';
       st.expectAttr = false;
@@ -268,8 +284,16 @@ function noteSyntax(st, kind, prev, beforePrev, word, lineBreak) {
       }
       if (attr) stmt = true;
       st.frames.push(stmt);
-    } else if (kind === ts.SyntaxKind.CloseBraceToken)
+    } else if (kind === ts.SyntaxKind.CloseBraceToken) {
       st.closeBraceRegex = st.frames.length ? st.frames.pop() : true;
+      while (st.questions.length && st.questions[st.questions.length - 1] > st.frames.length)
+        st.questions.pop();
+    }
+    if (kind === ts.SyntaxKind.ColonToken) {
+      const depth = st.questions.length ? st.questions[st.questions.length - 1] : -1;
+      st.lastColonTernary = depth === st.frames.length;
+      if (st.lastColonTernary) st.questions.pop();
+    } else if (kind !== ts.SyntaxKind.AsyncKeyword) st.lastColonTernary = false;
   } finally {
     st.prevWord = word;
     st.breakBefore = lineBreak;
@@ -294,6 +318,8 @@ function lex(text) {
     expectAttr: false,
     prevWord: '',
     breakBefore: false,
+    questions: [],
+    lastColonTernary: false,
   };
   while (true) {
     let kind = scanner.scan();

@@ -150,6 +150,21 @@ it('flags a sleep divided out of a function or class expression', () => {
   expect(scanText(`class{}/${call}`, 'tests/x.ts')[0]?.rule).toBe('bare-sleep');
 });
 
+it('flags a sleep divided out of a named function after a ternary colon', () => {
+  const call = `${'sleep'}(1)`;
+  expect(scanText(`x ? a : function f(){}/2; ${call}`, 'tests/x.ts')[0]?.rule).toBe('bare-sleep');
+});
+
+it('flags a sleep divided out of a class after for-of', () => {
+  const call = `${'sleep'}(1)`;
+  expect(scanText(`for (const y of class C{}/${call})`, 'tests/x.ts')[0]?.rule).toBe('bare-sleep');
+});
+
+it('flags a sleep after a decorated class', () => {
+  const call = `${'sleep'}(1)`;
+  expect(scanText(`@dec class C{}\n/${call}/`, 'tests/x.ts')[0]?.rule).toBe('bare-sleep');
+});
+
 it('does not flag a regex after an import attribute', () => {
   const call = `${'sleep'}(1)`;
   const withAttr = `import x from "./a" with { type: "json" }\n/${call}/.test(s)`;
