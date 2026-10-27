@@ -160,9 +160,110 @@ it('flags a sleep divided out of a class after for-of', () => {
   expect(scanText(`for (const y of class C{}/${call})`, 'tests/x.ts')[0]?.rule).toBe('bare-sleep');
 });
 
-it('flags a sleep after a decorated class', () => {
+it('does not flag a regex after a case clause block', () => {
   const call = `${'sleep'}(1)`;
-  expect(scanText(`@dec class C{}\n/${call}/`, 'tests/x.ts')[0]?.rule).toBe('bare-sleep');
+  expect(scanText(`switch (x) {\n  case 1: {}\n  /${call}/\n}`, 'tests/x.ts')).toEqual([]);
+});
+
+it('does not flag a regex after a default clause block', () => {
+  const call = `${'sleep'}(1)`;
+  expect(scanText(`switch (x) {\n  default: {}\n  /${call}/\n}`, 'tests/x.ts')).toEqual([]);
+});
+
+it('does not flag a regex after a labeled block', () => {
+  const call = `${'sleep'}(1)`;
+  expect(scanText(`label: {}\n/${call}/`, 'tests/x.ts')).toEqual([]);
+});
+
+it('does not flag a regex after an interface body', () => {
+  const call = `${'sleep'}(1)`;
+  expect(scanText(`interface I {\n  a: number\n}\n/${call}/`, 'tests/x.ts')).toEqual([]);
+});
+
+it('does not flag a regex after an enum body', () => {
+  const call = `${'sleep'}(1)`;
+  expect(scanText(`enum E {\n  A\n}\n/${call}/`, 'tests/x.ts')).toEqual([]);
+});
+
+it('does not flag a regex after a decorated class declaration', () => {
+  const call = `${'sleep'}(1)`;
+  expect(scanText(`@dec class C{}\n/${call}/`, 'tests/x.ts')).toEqual([]);
+  expect(scanText(`x = @dec class{}/2; ${call}`, 'tests/x.ts')[0]?.rule).toBe('bare-sleep');
+});
+
+it('does not let optional chaining leave a ternary for a later label colon', () => {
+  const call = `${'sleep'}(1)`;
+  expect(scanText(`a?.b\nlabel: {}\n/${call}/`, 'tests/x.ts')).toEqual([]);
+  expect(scanText(`a?.b\nlabel: function g(){}/${call}`, 'tests/x.ts')).toEqual([]);
+});
+
+it('does not let nullish coalescing leave a ternary for a later case colon', () => {
+  const call = `${'sleep'}(1)`;
+  expect(scanText(`a ?? b\nswitch (x) { case 1: {}\n/${call}/ }`, 'tests/x.ts')).toEqual([]);
+  expect(
+    scanText(`a ?? b\nswitch (x) {\n case 1: a\n case 2: function g(){}/${call}\n}`, 'tests/x.ts'),
+  ).toEqual([]);
+});
+
+it('does not let an optional parameter or property leave a ternary for a later label colon', () => {
+  const call = `${'sleep'}(1)`;
+  expect(scanText(`function f(a?: string) { label: {}\n/${call}/ }`, 'tests/x.ts')).toEqual([]);
+  expect(
+    scanText(`function f(a?: string) {}\nlabel: function g(){}/${call}`, 'tests/x.ts'),
+  ).toEqual([]);
+  expect(scanText(`function f(a?) {}\nlabel: function g(){}/${call}`, 'tests/x.ts')).toEqual([]);
+  expect(scanText(`class C { a?: string }\nlabel: function g(){}/${call}`, 'tests/x.ts')).toEqual(
+    [],
+  );
+});
+
+it('does not let a question mark in a regex leave a ternary for a later label colon', () => {
+  const call = `${'sleep'}(1)`;
+  expect(
+    scanText(`switch (x) {\n case 1: {}\n /a?/\n label: function g(){}/${call}\n}`, 'tests/x.ts'),
+  ).toEqual([]);
+});
+
+it('does not let a question mark in a string leave a ternary for a later case colon', () => {
+  const call = `${'sleep'}(1)`;
+  expect(scanText(`"a?"\nswitch (x) { case 1: {}\n/${call}/ }`, 'tests/x.ts')).toEqual([]);
+  expect(scanText(`"a?"\nlabel: function g(){}/${call}`, 'tests/x.ts')).toEqual([]);
+});
+
+it('flags a sleep divided after enum or interface used as a property or member', () => {
+  const call = `${'sleep'}(1)`;
+  expect(scanText(`const x = { enum: 1 }, y = {}/2; ${call}`, 'tests/x.ts')[0]?.rule).toBe(
+    'bare-sleep',
+  );
+  expect(scanText(`x = obj.enum + {}/2; ${call}`, 'tests/x.ts')[0]?.rule).toBe('bare-sleep');
+  expect(scanText(`const x = { interface: 1 }, y = {}/2; ${call}`, 'tests/x.ts')[0]?.rule).toBe(
+    'bare-sleep',
+  );
+  expect(scanText(`x = obj.interface + {}/2; ${call}`, 'tests/x.ts')[0]?.rule).toBe('bare-sleep');
+});
+
+it('does not flag a regex after an interface whose generic constraint names enum or interface', () => {
+  const call = `${'sleep'}(1)`;
+  expect(scanText(`interface I<T extends { enum: 1 }> {}\n/${call}/`, 'tests/x.ts')).toEqual([]);
+  expect(scanText(`interface I<T extends { interface: 1 }> {}\n/${call}/`, 'tests/x.ts')).toEqual(
+    [],
+  );
+});
+
+it('flags a sleep divided out of a call or member decorator class', () => {
+  const call = `${'sleep'}(1)`;
+  expect(scanText(`x = @dec() class C{}/2; ${call}`, 'tests/x.ts')[0]?.rule).toBe('bare-sleep');
+  expect(scanText(`x = @dec.a class C{}/2; ${call}`, 'tests/x.ts')[0]?.rule).toBe('bare-sleep');
+});
+
+it('does not flag a regex after a for-await label', () => {
+  const call = `${'sleep'}(1)`;
+  expect(scanText(`for await (x of y) label: {}\n/${call}/`, 'tests/x.ts')).toEqual([]);
+});
+
+it('flags a sleep divided out of a function after an empty ternary', () => {
+  const call = `${'sleep'}(1)`;
+  expect(scanText(`a ? : function g(){}/2; ${call}`, 'tests/x.ts')[0]?.rule).toBe('bare-sleep');
 });
 
 it('does not flag a regex after an import attribute', () => {

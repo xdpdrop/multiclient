@@ -224,12 +224,188 @@ function exprIntroducer(st, prev, beforePrev) {
     return false;
   if (prev === ts.SyntaxKind.OfKeyword) return true;
   if (prev === ts.SyntaxKind.Identifier)
-    return st.prevWord === 'of' || beforePrev === ts.SyntaxKind.AtToken;
+    return st.prevWord === 'of' || (beforePrev === ts.SyntaxKind.AtToken && st.decoratorExpr);
   return isBeforeExpr(prev);
 }
 
-function noteSyntax(st, kind, prev, beforePrev, word, lineBreak) {
+function allowsASI(kind) {
+  return (
+    kind === ts.SyntaxKind.Identifier ||
+    kind === ts.SyntaxKind.StringLiteral ||
+    kind === ts.SyntaxKind.NumericLiteral ||
+    kind === ts.SyntaxKind.BigIntLiteral ||
+    kind === ts.SyntaxKind.RegularExpressionLiteral ||
+    kind === ts.SyntaxKind.NoSubstitutionTemplateLiteral ||
+    kind === ts.SyntaxKind.TemplateTail ||
+    kind === ts.SyntaxKind.CloseParenToken ||
+    kind === ts.SyntaxKind.CloseBracketToken ||
+    kind === ts.SyntaxKind.CloseBraceToken ||
+    kind === ts.SyntaxKind.PlusPlusToken ||
+    kind === ts.SyntaxKind.MinusMinusToken ||
+    kind === ts.SyntaxKind.TrueKeyword ||
+    kind === ts.SyntaxKind.FalseKeyword ||
+    kind === ts.SyntaxKind.NullKeyword ||
+    kind === ts.SyntaxKind.UndefinedKeyword ||
+    kind === ts.SyntaxKind.ThisKeyword ||
+    kind === ts.SyntaxKind.BreakKeyword ||
+    kind === ts.SyntaxKind.ContinueKeyword ||
+    kind === ts.SyntaxKind.ReturnKeyword ||
+    kind === ts.SyntaxKind.ThrowKeyword ||
+    kind === ts.SyntaxKind.DebuggerKeyword ||
+    kind === ts.SyntaxKind.PrivateIdentifier
+  );
+}
+
+function headerParen(prev) {
+  return (
+    prev === ts.SyntaxKind.IfKeyword ||
+    prev === ts.SyntaxKind.WhileKeyword ||
+    prev === ts.SyntaxKind.ForKeyword ||
+    prev === ts.SyntaxKind.SwitchKeyword ||
+    prev === ts.SyntaxKind.WithKeyword ||
+    prev === ts.SyntaxKind.CatchKeyword
+  );
+}
+
+function nextCode(text, end) {
+  let i = end;
+  while (i < text.length) {
+    const ch = text[i];
+    if (ch === ' ' || ch === '\t' || ch === '\n' || ch === '\r') {
+      i++;
+      continue;
+    }
+    if (ch === '/' && text[i + 1] === '/') {
+      i += 2;
+      while (i < text.length && text[i] !== '\n') i++;
+      continue;
+    }
+    if (ch === '/' && text[i + 1] === '*') {
+      const close = text.indexOf('*/', i + 2);
+      i = close < 0 ? text.length : close + 2;
+      continue;
+    }
+    return ch;
+  }
+  return '';
+}
+
+const NAME_INTRO = new Set([
+  ts.SyntaxKind.OpenParenToken,
+  ts.SyntaxKind.OpenBraceToken,
+  ts.SyntaxKind.CommaToken,
+  ts.SyntaxKind.SemicolonToken,
+  ts.SyntaxKind.DotDotDotToken,
+  ts.SyntaxKind.PublicKeyword,
+  ts.SyntaxKind.PrivateKeyword,
+  ts.SyntaxKind.ProtectedKeyword,
+  ts.SyntaxKind.ReadonlyKeyword,
+  ts.SyntaxKind.StaticKeyword,
+  ts.SyntaxKind.AbstractKeyword,
+  ts.SyntaxKind.DeclareKeyword,
+  ts.SyntaxKind.OverrideKeyword,
+  ts.SyntaxKind.AccessorKeyword,
+]);
+
+function inClassBody(st) {
+  return st.classMark.length > 0 && st.classMark[st.classMark.length - 1] === true;
+}
+
+function inObjectLiteral(st) {
+  return st.objectMark.length > 0 && st.objectMark[st.objectMark.length - 1] === true;
+}
+
+// `a?:` is optional only on a type, parameter, or property name. `a ? :` is a ternary.
+function optionalColon(st, prev, beforePrev) {
+  const name =
+    prev === ts.SyntaxKind.Identifier ||
+    prev === ts.SyntaxKind.PrivateIdentifier ||
+    prev === ts.SyntaxKind.CloseBracketToken;
+  if (!name) return false;
+  if (st.typeFrame) return true;
+  if (prev === ts.SyntaxKind.CloseBracketToken) return inClassBody(st) || inObjectLiteral(st);
+  if (
+    st.paramDepth > 0 &&
+    NAME_INTRO.has(beforePrev) &&
+    beforePrev !== ts.SyntaxKind.OpenBraceToken
+  )
+    return true;
+  if (inClassBody(st) && NAME_INTRO.has(beforePrev)) return true;
+  return (
+    inObjectLiteral(st) &&
+    (beforePrev === ts.SyntaxKind.OpenBraceToken || beforePrev === ts.SyntaxKind.CommaToken)
+  );
+}
+
+// `a?:`, `a?`, `a? =` and `[a?]` are optional punctuation, not an open ternary.
+function optionalQuestion(text, end, st, prev, beforePrev) {
+  const ch = nextCode(text, end);
+  if (ch === ')' || ch === ',' || ch === '=' || ch === ']' || ch === '}') return true;
+  return ch === ':' && optionalColon(st, prev, beforePrev);
+}
+
+// `enum` / `interface` arm a type body only as a declaration, not a property or member.
+function isTypeDecl(st, kind, prev, text, end) {
+  if (kind !== ts.SyntaxKind.InterfaceKeyword && kind !== ts.SyntaxKind.EnumKeyword) return false;
+  if (prev === ts.SyntaxKind.DotToken || prev === ts.SyntaxKind.QuestionDotToken) return false;
+  if (nextCode(text, end) === ':') return false;
+  return (
+    st.atStmt ||
+    prev === ts.SyntaxKind.ExportKeyword ||
+    prev === ts.SyntaxKind.DeclareKeyword ||
+    prev === ts.SyntaxKind.DefaultKeyword ||
+    (kind === ts.SyntaxKind.EnumKeyword && prev === ts.SyntaxKind.ConstKeyword)
+  );
+}
+
+// A decorator expression stays open through `@dec`, `@dec.a`, and `@dec()`.
+function advanceDecorator(st, kind, prev, beforePrev) {
+  const head = st.decoratorHead;
+  if (kind === ts.SyntaxKind.AtToken) {
+    const continues =
+      head === 'ready' ||
+      prev === ts.SyntaxKind.AtToken ||
+      (prev === ts.SyntaxKind.Identifier && beforePrev === ts.SyntaxKind.AtToken);
+    if (!continues) {
+      st.decoratorExpr = exprIntroducer(st, prev, beforePrev) || exprFrame(st);
+      st.decoratorDefault = prev === ts.SyntaxKind.DefaultKeyword;
+    }
+    st.decoratorHead = 'name';
+    return;
+  }
+  if (!head) return;
+  if (head === 'name') {
+    st.decoratorHead = kind === ts.SyntaxKind.Identifier ? 'ready' : false;
+    return;
+  }
+  if (head === 'ready') {
+    if (kind === ts.SyntaxKind.DotToken) st.decoratorHead = 'name';
+    else if (kind === ts.SyntaxKind.OpenParenToken) st.decoratorHead = 1;
+    else if (kind !== ts.SyntaxKind.ClassKeyword) st.decoratorHead = false;
+    return;
+  }
+  if (typeof head === 'number') {
+    if (kind === ts.SyntaxKind.OpenParenToken) st.decoratorHead = head + 1;
+    else if (kind === ts.SyntaxKind.CloseParenToken)
+      st.decoratorHead = head === 1 ? 'ready' : head - 1;
+  }
+}
+
+function noteSyntax(st, kind, prev, beforePrev, word, lineBreak, text, end) {
   try {
+    if (
+      lineBreak &&
+      allowsASI(prev) &&
+      !exprFrame(st) &&
+      !st.typeFrame &&
+      !st.parens.length &&
+      !st.brackets
+    )
+      st.atStmt = true;
+    const colonBrace = st.stmtColon;
+    st.stmtColon = false;
+    st.sawLabelIdent = kind === ts.SyntaxKind.Identifier && st.atStmt && !st.typeFrame;
+    st.nextStmt = false;
     if (
       kind === ts.SyntaxKind.StringLiteral &&
       (prev === ts.SyntaxKind.FromKeyword || prev === ts.SyntaxKind.ImportKeyword)
@@ -238,19 +414,52 @@ function noteSyntax(st, kind, prev, beforePrev, word, lineBreak) {
     else if (st.expectAttr === true && (word === 'with' || word === 'assert'))
       st.expectAttr = 'brace';
     else if (kind !== ts.SyntaxKind.OpenBraceToken) st.expectAttr = false;
-    if (kind === ts.SyntaxKind.QuestionToken) st.questions.push(st.frames.length);
+    const decorated =
+      kind === ts.SyntaxKind.ClassKeyword && st.decoratorExpr && st.decoratorHead === 'ready';
+    advanceDecorator(st, kind, prev, beforePrev);
+    // `?.` and `??` are their own tokens. Skip `?` only on an optional type, parameter, or property.
+    if (kind === ts.SyntaxKind.QuestionToken && !optionalQuestion(text, end, st, prev, beforePrev))
+      st.questions.push(st.frames.length);
+    if (kind === ts.SyntaxKind.CaseKeyword)
+      st.clauses.push({ depth: st.frames.length, qCount: st.questions.length });
+    if (kind === ts.SyntaxKind.DefaultKeyword) st.defaultAtStmt = st.atStmt;
+    if (kind === ts.SyntaxKind.InterfaceKeyword || kind === ts.SyntaxKind.EnumKeyword) {
+      if (isTypeDecl(st, kind, prev, text, end)) st.declBrace = { angles: 0 };
+    }
+    if (st.declBrace && kind !== ts.SyntaxKind.OpenBraceToken) {
+      if (kind === ts.SyntaxKind.LessThanToken) st.declBrace.angles++;
+      else if (kind === ts.SyntaxKind.GreaterThanToken) st.declBrace.angles--;
+      else if (kind === ts.SyntaxKind.GreaterThanGreaterThanToken) st.declBrace.angles -= 2;
+      else if (kind === ts.SyntaxKind.GreaterThanGreaterThanGreaterThanToken)
+        st.declBrace.angles -= 3;
+    }
+    if (kind === ts.SyntaxKind.OpenParenToken) {
+      const pendingBody = st.bodies[st.bodies.length - 1];
+      const param = !!(pendingBody && !pendingBody.closed);
+      if (param) st.paramDepth++;
+      st.paramParens.push(param);
+      st.parens.push(
+        headerParen(prev) ||
+          (prev === ts.SyntaxKind.AwaitKeyword && beforePrev === ts.SyntaxKind.ForKeyword),
+      );
+    }
+    if (kind === ts.SyntaxKind.OpenBracketToken) st.brackets++;
+    else if (kind === ts.SyntaxKind.CloseBracketToken && st.brackets) st.brackets--;
     if (kind === ts.SyntaxKind.FunctionKeyword || kind === ts.SyntaxKind.ClassKeyword) {
       const intro = prev === ts.SyntaxKind.AsyncKeyword ? beforePrev : prev;
       const introBefore = prev === ts.SyntaxKind.AsyncKeyword ? undefined : beforePrev;
       const introBreak = prev === ts.SyntaxKind.AsyncKeyword ? st.breakBefore : lineBreak;
       st.bodies.push({
         expr:
-          exprIntroducer(st, intro, introBefore) &&
+          (exprIntroducer(st, intro, introBefore) || decorated) &&
           !(intro === ts.SyntaxKind.ReturnKeyword && introBreak),
         named: false,
         closed: false,
-        isDefault: intro === ts.SyntaxKind.DefaultKeyword,
+        isDefault: intro === ts.SyntaxKind.DefaultKeyword || st.decoratorDefault,
+        isClass: kind === ts.SyntaxKind.ClassKeyword,
       });
+      st.decoratorDefault = false;
+      if (kind === ts.SyntaxKind.ClassKeyword) st.decoratorHead = false;
     }
     const top = st.bodies[st.bodies.length - 1];
     if (
@@ -269,34 +478,83 @@ function noteSyntax(st, kind, prev, beforePrev, word, lineBreak) {
     }
     if (kind === ts.SyntaxKind.SemicolonToken) {
       st.bodies.length = 0;
+      st.declBrace = null;
       while (st.questions.length && st.questions[st.questions.length - 1] >= st.frames.length)
         st.questions.pop();
+      st.nextStmt = true;
+    }
+    if (
+      kind === ts.SyntaxKind.ElseKeyword ||
+      kind === ts.SyntaxKind.DoKeyword ||
+      kind === ts.SyntaxKind.TryKeyword ||
+      kind === ts.SyntaxKind.FinallyKeyword ||
+      kind === ts.SyntaxKind.CatchKeyword
+    )
+      st.nextStmt = true;
+    if (kind === ts.SyntaxKind.CloseParenToken && st.parens.length) {
+      if (st.parens.pop()) st.nextStmt = true;
+      if (st.paramParens.pop()) st.paramDepth--;
     }
     if (kind === ts.SyntaxKind.OpenBraceToken) {
       const attr = st.expectAttr === 'brace';
       st.expectAttr = false;
       let stmt = opensStatement(st, prev);
       const pending = st.bodies[st.bodies.length - 1];
+      let tookBody = false;
+      let classBody = false;
       if (pending && bodyPrev(prev)) {
+        classBody = pending.isClass === true;
         st.bodies.pop();
+        tookBody = true;
         const expr = pending.expr || (!pending.named && !pending.isDefault);
         stmt = !expr;
       }
       if (attr) stmt = true;
-      st.frames.push(stmt);
+      if (colonBrace && !tookBody) stmt = true;
+      let frame = stmt;
+      if (st.declBrace && st.declBrace.angles <= 0) {
+        frame = 'type';
+        st.declBrace = null;
+      }
+      st.typeFrame = frame === 'type';
+      st.frames.push(frame);
+      st.classMark.push(classBody);
+      st.objectMark.push(!tookBody && frame === false);
+      st.nextStmt = frame === true;
     } else if (kind === ts.SyntaxKind.CloseBraceToken) {
-      st.closeBraceRegex = st.frames.length ? st.frames.pop() : true;
+      const frame = st.frames.length ? st.frames.pop() : true;
+      if (st.classMark.length) st.classMark.pop();
+      if (st.objectMark.length) st.objectMark.pop();
+      st.closeBraceRegex = frame === true || frame === 'type';
+      st.typeFrame = st.frames[st.frames.length - 1] === 'type';
       while (st.questions.length && st.questions[st.questions.length - 1] > st.frames.length)
         st.questions.pop();
-    }
+      if (st.closeBraceRegex) st.nextStmt = true;
+    } else st.typeFrame = st.frames[st.frames.length - 1] === 'type';
     if (kind === ts.SyntaxKind.ColonToken) {
-      const depth = st.questions.length ? st.questions[st.questions.length - 1] : -1;
-      st.lastColonTernary = depth === st.frames.length;
-      if (st.lastColonTernary) st.questions.pop();
+      const qDepth = st.questions.length ? st.questions[st.questions.length - 1] : -1;
+      const clause = st.clauses.length ? st.clauses[st.clauses.length - 1] : undefined;
+      const clauseHere = !!clause && clause.depth === st.frames.length;
+      const inCaseExpr =
+        clauseHere && st.questions.length > clause.qCount && qDepth === st.frames.length;
+      const switchDefault = prev === ts.SyntaxKind.DefaultKeyword && st.defaultAtStmt;
+      const label = st.prevLabelIdent;
+      const structural = (clauseHere && !inCaseExpr) || switchDefault || label;
+      if (structural) {
+        st.lastColonTernary = false;
+        st.stmtColon = true;
+        st.nextStmt = true;
+        if (clauseHere && !inCaseExpr) st.clauses.pop();
+      } else if (qDepth === st.frames.length) {
+        st.lastColonTernary = true;
+        st.questions.pop();
+      } else st.lastColonTernary = false;
     } else if (kind !== ts.SyntaxKind.AsyncKeyword) st.lastColonTernary = false;
   } finally {
     st.prevWord = word;
     st.breakBefore = lineBreak;
+    st.prevLabelIdent = st.sawLabelIdent;
+    st.atStmt = st.nextStmt;
   }
 }
 
@@ -320,6 +578,24 @@ function lex(text) {
     breakBefore: false,
     questions: [],
     lastColonTernary: false,
+    atStmt: true,
+    nextStmt: false,
+    sawLabelIdent: false,
+    prevLabelIdent: false,
+    stmtColon: false,
+    clauses: [],
+    defaultAtStmt: false,
+    declBrace: null,
+    typeFrame: false,
+    parens: [],
+    paramParens: [],
+    paramDepth: 0,
+    classMark: [],
+    objectMark: [],
+    brackets: 0,
+    decoratorExpr: false,
+    decoratorDefault: false,
+    decoratorHead: false,
   };
   while (true) {
     let kind = scanner.scan();
@@ -382,6 +658,8 @@ function lex(text) {
           prevNonTrivia,
           text.slice(start, scanner.getTokenEnd()),
           text.slice(lastNonTriviaEnd, start).includes('\n'),
+          text,
+          scanner.getTokenEnd(),
         );
       }
       brace.moduleSpecifier =
