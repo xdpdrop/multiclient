@@ -316,6 +316,23 @@ it('does not flag a regex after a mapped type continued to the statement end', (
   );
 });
 
+it('flags a sleep divided on the line after a type alias ending in string, void, or >', () => {
+  const call = `${'sleep'}(1)`;
+  for (const head of ['type M = string', 'type M = void', 'type M = Foo<Bar>'])
+    expect(scanText(`${head}\na / ${call} / 2`, 'tests/x.ts')[0]?.rule, head).toBe('bare-sleep');
+});
+
+it('keeps a slash inside a type alias continued on the next line by |, &, extends, or ?', () => {
+  const call = `${'sleep'}(1)`;
+  expect(scanText(`type M = string\n| Foo / ${call} / Bar`, 'tests/x.ts')).toEqual([]);
+  expect(scanText(`type M = string\n& Foo / ${call} / Bar`, 'tests/x.ts')).toEqual([]);
+  expect(scanText(`type M = Foo\nextends Bar / ${call} / Baz`, 'tests/x.ts')).toEqual([]);
+  expect(scanText(`type M = T\n? U / ${call} / V : W`, 'tests/x.ts')).toEqual([]);
+  expect(scanText(`type M = string\n| Foo\na / ${call} / 2`, 'tests/x.ts')[0]?.rule).toBe(
+    'bare-sleep',
+  );
+});
+
 it('does not flag a regex after an import attribute', () => {
   const call = `${'sleep'}(1)`;
   const withAttr = `import x from "./a" with { type: "json" }\n/${call}/.test(s)`;

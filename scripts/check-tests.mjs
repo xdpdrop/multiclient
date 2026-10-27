@@ -453,16 +453,11 @@ function advanceDecorator(st, kind, prev, beforePrev) {
 
 function noteSyntax(st, kind, prev, beforePrev, word, lineBreak, text, end) {
   try {
-    if (
-      lineBreak &&
-      allowsASI(prev) &&
-      !exprFrame(st) &&
-      !st.typeFrame &&
-      !st.parens.length &&
-      !st.brackets
-    ) {
-      st.atStmt = true;
-      // The alias ends at the next statement, not at the mapped type's `}`.
+    if (lineBreak && !exprFrame(st) && !st.typeFrame && !st.parens.length && !st.brackets) {
+      if (allowsASI(prev)) st.atStmt = true;
+      // End the alias on a line break unless the next token continues it. `string`,
+      // `void`, and `>` do not allow ASI, and the alias still ends before the next
+      // statement. A mapped type's `}` is a nested frame, so it does not end the alias.
       if (
         st.typeAlias?.body &&
         st.frames.length === st.typeAlias.depth &&
