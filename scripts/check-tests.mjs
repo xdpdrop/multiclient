@@ -267,8 +267,7 @@ function headerParen(prev) {
   );
 }
 
-// `a?:`, `a?`, `a? =` and `[a?]` are optional punctuation, not an open ternary.
-function optionalQuestion(text, end) {
+function nextCode(text, end) {
   let i = end;
   while (i < text.length) {
     const ch = text[i];
@@ -286,10 +285,110 @@ function optionalQuestion(text, end) {
       i = close < 0 ? text.length : close + 2;
       continue;
     }
-    break;
+    return ch;
   }
-  const ch = text[i];
-  return ch === ':' || ch === ')' || ch === ',' || ch === '=' || ch === ']' || ch === '}';
+  return '';
+}
+
+const NAME_INTRO = new Set([
+  ts.SyntaxKind.OpenParenToken,
+  ts.SyntaxKind.OpenBraceToken,
+  ts.SyntaxKind.CommaToken,
+  ts.SyntaxKind.SemicolonToken,
+  ts.SyntaxKind.DotDotDotToken,
+  ts.SyntaxKind.PublicKeyword,
+  ts.SyntaxKind.PrivateKeyword,
+  ts.SyntaxKind.ProtectedKeyword,
+  ts.SyntaxKind.ReadonlyKeyword,
+  ts.SyntaxKind.StaticKeyword,
+  ts.SyntaxKind.AbstractKeyword,
+  ts.SyntaxKind.DeclareKeyword,
+  ts.SyntaxKind.OverrideKeyword,
+  ts.SyntaxKind.AccessorKeyword,
+]);
+
+function inClassBody(st) {
+  return st.classMark.length > 0 && st.classMark[st.classMark.length - 1] === true;
+}
+
+function inObjectLiteral(st) {
+  return st.objectMark.length > 0 && st.objectMark[st.objectMark.length - 1] === true;
+}
+
+// `a?:` is optional only on a type, parameter, or property name. `a ? :` is a ternary.
+function optionalColon(st, prev, beforePrev) {
+  const name =
+    prev === ts.SyntaxKind.Identifier ||
+    prev === ts.SyntaxKind.PrivateIdentifier ||
+    prev === ts.SyntaxKind.CloseBracketToken;
+  if (!name) return false;
+  if (st.typeFrame) return true;
+  if (prev === ts.SyntaxKind.CloseBracketToken) return inClassBody(st) || inObjectLiteral(st);
+  if (
+    st.paramDepth > 0 &&
+    NAME_INTRO.has(beforePrev) &&
+    beforePrev !== ts.SyntaxKind.OpenBraceToken
+  )
+    return true;
+  if (inClassBody(st) && NAME_INTRO.has(beforePrev)) return true;
+  return (
+    inObjectLiteral(st) &&
+    (beforePrev === ts.SyntaxKind.OpenBraceToken || beforePrev === ts.SyntaxKind.CommaToken)
+  );
+}
+
+// `a?:`, `a?`, `a? =` and `[a?]` are optional punctuation, not an open ternary.
+function optionalQuestion(text, end, st, prev, beforePrev) {
+  const ch = nextCode(text, end);
+  if (ch === ')' || ch === ',' || ch === '=' || ch === ']' || ch === '}') return true;
+  return ch === ':' && optionalColon(st, prev, beforePrev);
+}
+
+// `enum` / `interface` arm a type body only as a declaration, not a property or member.
+function isTypeDecl(st, kind, prev, text, end) {
+  if (kind !== ts.SyntaxKind.InterfaceKeyword && kind !== ts.SyntaxKind.EnumKeyword) return false;
+  if (prev === ts.SyntaxKind.DotToken || prev === ts.SyntaxKind.QuestionDotToken) return false;
+  if (nextCode(text, end) === ':') return false;
+  return (
+    st.atStmt ||
+    prev === ts.SyntaxKind.ExportKeyword ||
+    prev === ts.SyntaxKind.DeclareKeyword ||
+    prev === ts.SyntaxKind.DefaultKeyword ||
+    (kind === ts.SyntaxKind.EnumKeyword && prev === ts.SyntaxKind.ConstKeyword)
+  );
+}
+
+// A decorator expression stays open through `@dec`, `@dec.a`, and `@dec()`.
+function advanceDecorator(st, kind, prev, beforePrev) {
+  const head = st.decoratorHead;
+  if (kind === ts.SyntaxKind.AtToken) {
+    const continues =
+      head === 'ready' ||
+      prev === ts.SyntaxKind.AtToken ||
+      (prev === ts.SyntaxKind.Identifier && beforePrev === ts.SyntaxKind.AtToken);
+    if (!continues) {
+      st.decoratorExpr = exprIntroducer(st, prev, beforePrev) || exprFrame(st);
+      st.decoratorDefault = prev === ts.SyntaxKind.DefaultKeyword;
+    }
+    st.decoratorHead = 'name';
+    return;
+  }
+  if (!head) return;
+  if (head === 'name') {
+    st.decoratorHead = kind === ts.SyntaxKind.Identifier ? 'ready' : false;
+    return;
+  }
+  if (head === 'ready') {
+    if (kind === ts.SyntaxKind.DotToken) st.decoratorHead = 'name';
+    else if (kind === ts.SyntaxKind.OpenParenToken) st.decoratorHead = 1;
+    else if (kind !== ts.SyntaxKind.ClassKeyword) st.decoratorHead = false;
+    return;
+  }
+  if (typeof head === 'number') {
+    if (kind === ts.SyntaxKind.OpenParenToken) st.decoratorHead = head + 1;
+    else if (kind === ts.SyntaxKind.CloseParenToken)
+      st.decoratorHead = head === 1 ? 'ready' : head - 1;
+  }
 }
 
 function noteSyntax(st, kind, prev, beforePrev, word, lineBreak, text, end) {
@@ -315,23 +414,17 @@ function noteSyntax(st, kind, prev, beforePrev, word, lineBreak, text, end) {
     else if (st.expectAttr === true && (word === 'with' || word === 'assert'))
       st.expectAttr = 'brace';
     else if (kind !== ts.SyntaxKind.OpenBraceToken) st.expectAttr = false;
-    if (kind === ts.SyntaxKind.AtToken) {
-      const continues =
-        prev === ts.SyntaxKind.AtToken ||
-        (prev === ts.SyntaxKind.Identifier && beforePrev === ts.SyntaxKind.AtToken);
-      if (!continues) {
-        st.decoratorExpr = exprIntroducer(st, prev, beforePrev) || exprFrame(st);
-        st.decoratorDefault = prev === ts.SyntaxKind.DefaultKeyword;
-      }
-    }
-    // `?.` and `??` are their own tokens. A `?` before `:`, `)`, `,`, `=`, `]` or `}` is optional.
-    if (kind === ts.SyntaxKind.QuestionToken && !optionalQuestion(text, end))
+    const decorated =
+      kind === ts.SyntaxKind.ClassKeyword && st.decoratorExpr && st.decoratorHead === 'ready';
+    advanceDecorator(st, kind, prev, beforePrev);
+    // `?.` and `??` are their own tokens. Skip `?` only on an optional type, parameter, or property.
+    if (kind === ts.SyntaxKind.QuestionToken && !optionalQuestion(text, end, st, prev, beforePrev))
       st.questions.push(st.frames.length);
     if (kind === ts.SyntaxKind.CaseKeyword)
       st.clauses.push({ depth: st.frames.length, qCount: st.questions.length });
     if (kind === ts.SyntaxKind.DefaultKeyword) st.defaultAtStmt = st.atStmt;
     if (kind === ts.SyntaxKind.InterfaceKeyword || kind === ts.SyntaxKind.EnumKeyword)
-      st.declBrace = { angles: 0 };
+      st.declBrace = isTypeDecl(st, kind, prev, text, end) ? { angles: 0 } : null;
     if (st.declBrace && kind !== ts.SyntaxKind.OpenBraceToken) {
       if (kind === ts.SyntaxKind.LessThanToken) st.declBrace.angles++;
       else if (kind === ts.SyntaxKind.GreaterThanToken) st.declBrace.angles--;
@@ -339,7 +432,16 @@ function noteSyntax(st, kind, prev, beforePrev, word, lineBreak, text, end) {
       else if (kind === ts.SyntaxKind.GreaterThanGreaterThanGreaterThanToken)
         st.declBrace.angles -= 3;
     }
-    if (kind === ts.SyntaxKind.OpenParenToken) st.parens.push(headerParen(prev));
+    if (kind === ts.SyntaxKind.OpenParenToken) {
+      const pendingBody = st.bodies[st.bodies.length - 1];
+      const param = !!(pendingBody && !pendingBody.closed);
+      if (param) st.paramDepth++;
+      st.paramParens.push(param);
+      st.parens.push(
+        headerParen(prev) ||
+          (prev === ts.SyntaxKind.AwaitKeyword && beforePrev === ts.SyntaxKind.ForKeyword),
+      );
+    }
     if (kind === ts.SyntaxKind.OpenBracketToken) st.brackets++;
     else if (kind === ts.SyntaxKind.CloseBracketToken && st.brackets) st.brackets--;
     if (kind === ts.SyntaxKind.FunctionKeyword || kind === ts.SyntaxKind.ClassKeyword) {
@@ -348,13 +450,15 @@ function noteSyntax(st, kind, prev, beforePrev, word, lineBreak, text, end) {
       const introBreak = prev === ts.SyntaxKind.AsyncKeyword ? st.breakBefore : lineBreak;
       st.bodies.push({
         expr:
-          exprIntroducer(st, intro, introBefore) &&
+          (exprIntroducer(st, intro, introBefore) || decorated) &&
           !(intro === ts.SyntaxKind.ReturnKeyword && introBreak),
         named: false,
         closed: false,
         isDefault: intro === ts.SyntaxKind.DefaultKeyword || st.decoratorDefault,
+        isClass: kind === ts.SyntaxKind.ClassKeyword,
       });
       st.decoratorDefault = false;
+      if (kind === ts.SyntaxKind.ClassKeyword) st.decoratorHead = false;
     }
     const top = st.bodies[st.bodies.length - 1];
     if (
@@ -386,15 +490,19 @@ function noteSyntax(st, kind, prev, beforePrev, word, lineBreak, text, end) {
       kind === ts.SyntaxKind.CatchKeyword
     )
       st.nextStmt = true;
-    if (kind === ts.SyntaxKind.CloseParenToken && st.parens.length && st.parens.pop())
-      st.nextStmt = true;
+    if (kind === ts.SyntaxKind.CloseParenToken && st.parens.length) {
+      if (st.parens.pop()) st.nextStmt = true;
+      if (st.paramParens.pop()) st.paramDepth--;
+    }
     if (kind === ts.SyntaxKind.OpenBraceToken) {
       const attr = st.expectAttr === 'brace';
       st.expectAttr = false;
       let stmt = opensStatement(st, prev);
       const pending = st.bodies[st.bodies.length - 1];
       let tookBody = false;
+      let classBody = false;
       if (pending && bodyPrev(prev)) {
+        classBody = pending.isClass === true;
         st.bodies.pop();
         tookBody = true;
         const expr = pending.expr || (!pending.named && !pending.isDefault);
@@ -409,9 +517,13 @@ function noteSyntax(st, kind, prev, beforePrev, word, lineBreak, text, end) {
       }
       st.typeFrame = frame === 'type';
       st.frames.push(frame);
+      st.classMark.push(classBody);
+      st.objectMark.push(!tookBody && frame === false);
       st.nextStmt = frame === true;
     } else if (kind === ts.SyntaxKind.CloseBraceToken) {
       const frame = st.frames.length ? st.frames.pop() : true;
+      if (st.classMark.length) st.classMark.pop();
+      if (st.objectMark.length) st.objectMark.pop();
       st.closeBraceRegex = frame === true || frame === 'type';
       st.typeFrame = st.frames[st.frames.length - 1] === 'type';
       while (st.questions.length && st.questions[st.questions.length - 1] > st.frames.length)
@@ -475,9 +587,14 @@ function lex(text) {
     declBrace: null,
     typeFrame: false,
     parens: [],
+    paramParens: [],
+    paramDepth: 0,
+    classMark: [],
+    objectMark: [],
     brackets: 0,
     decoratorExpr: false,
     decoratorDefault: false,
+    decoratorHead: false,
   };
   while (true) {
     let kind = scanner.scan();

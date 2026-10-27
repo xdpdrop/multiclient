@@ -230,6 +230,34 @@ it('does not let a question mark in a string leave a ternary for a later case co
   expect(scanText(`"a?"\nlabel: function g(){}/${call}`, 'tests/x.ts')).toEqual([]);
 });
 
+it('flags a sleep divided after enum or interface used as a property or member', () => {
+  const call = `${'sleep'}(1)`;
+  expect(scanText(`const x = { enum: 1 }, y = {}/2; ${call}`, 'tests/x.ts')[0]?.rule).toBe(
+    'bare-sleep',
+  );
+  expect(scanText(`x = obj.enum + {}/2; ${call}`, 'tests/x.ts')[0]?.rule).toBe('bare-sleep');
+  expect(scanText(`const x = { interface: 1 }, y = {}/2; ${call}`, 'tests/x.ts')[0]?.rule).toBe(
+    'bare-sleep',
+  );
+  expect(scanText(`x = obj.interface + {}/2; ${call}`, 'tests/x.ts')[0]?.rule).toBe('bare-sleep');
+});
+
+it('flags a sleep divided out of a call or member decorator class', () => {
+  const call = `${'sleep'}(1)`;
+  expect(scanText(`x = @dec() class C{}/2; ${call}`, 'tests/x.ts')[0]?.rule).toBe('bare-sleep');
+  expect(scanText(`x = @dec.a class C{}/2; ${call}`, 'tests/x.ts')[0]?.rule).toBe('bare-sleep');
+});
+
+it('does not flag a regex after a for-await label', () => {
+  const call = `${'sleep'}(1)`;
+  expect(scanText(`for await (x of y) label: {}\n/${call}/`, 'tests/x.ts')).toEqual([]);
+});
+
+it('flags a sleep divided out of a function after an empty ternary', () => {
+  const call = `${'sleep'}(1)`;
+  expect(scanText(`a ? : function g(){}/2; ${call}`, 'tests/x.ts')[0]?.rule).toBe('bare-sleep');
+});
+
 it('does not flag a regex after an import attribute', () => {
   const call = `${'sleep'}(1)`;
   const withAttr = `import x from "./a" with { type: "json" }\n/${call}/.test(s)`;
