@@ -266,6 +266,73 @@ it('flags a sleep divided out of a function after an empty ternary', () => {
   expect(scanText(`a ? : function g(){}/2; ${call}`, 'tests/x.ts')[0]?.rule).toBe('bare-sleep');
 });
 
+it('does not flag a regex on the line after a do-while without a semicolon', () => {
+  const call = `${'sleep'}(1)`;
+  expect(scanText(`do {\n} while (cond)\n/${call}/`, 'tests/x.ts')).toEqual([]);
+  expect(scanText(`do {\n} while (a / ${call})`, 'tests/x.ts')[0]?.rule).toBe('bare-sleep');
+});
+
+it('does not flag a regex inside a namespace body', () => {
+  const call = `${'sleep'}(1)`;
+  expect(scanText(`namespace N {\n  {\n  }\n  /${call}/\n}`, 'tests/x.ts')).toEqual([]);
+  expect(scanText(`namespace N {\n  const x = a / ${call}\n}`, 'tests/x.ts')[0]?.rule).toBe(
+    'bare-sleep',
+  );
+});
+
+it('does not flag a regex after a mapped type literal', () => {
+  const call = `${'sleep'}(1)`;
+  expect(scanText(`type M = { [K in keyof T]: T[K] }\n/${call}/`, 'tests/x.ts')).toEqual([]);
+  expect(scanText(`type M = { [K in keyof T]: T[K] }\na / ${call}`, 'tests/x.ts')[0]?.rule).toBe(
+    'bare-sleep',
+  );
+});
+
+it('flags a sleep divided after type, namespace, or module used as an identifier', () => {
+  const call = `${'sleep'}(1)`;
+  expect(scanText(`type = {a:1} / ${call}`, 'tests/x.ts')[0]?.rule).toBe('bare-sleep');
+  expect(scanText(`this.module = {} / ${call}`, 'tests/x.ts')[0]?.rule).toBe('bare-sleep');
+  expect(scanText(`namespace(x)\nconst y = {} / ${call}`, 'tests/x.ts')[0]?.rule).toBe(
+    'bare-sleep',
+  );
+  expect(scanText(`class C {\n  module = {} / ${call}\n}`, 'tests/x.ts')[0]?.rule).toBe(
+    'bare-sleep',
+  );
+});
+
+it('does not flag a regex after a mapped type continued to the statement end', () => {
+  const call = `${'sleep'}(1)`;
+  const mapped = '{ [K in keyof T]: T[K] }';
+  expect(scanText(`type M = ${mapped} | U\n/${call}/`, 'tests/x.ts')).toEqual([]);
+  expect(scanText(`type M = ${mapped} & U\n/${call}/`, 'tests/x.ts')).toEqual([]);
+  expect(scanText(`type M = ${mapped}[K]\n/${call}/`, 'tests/x.ts')).toEqual([]);
+  expect(scanText(`type M = T extends U ? ${mapped} : V\n/${call}/`, 'tests/x.ts')).toEqual([]);
+  expect(scanText(`type M = T extends U ? ${mapped} : { a: 1 }\n/${call}/`, 'tests/x.ts')).toEqual(
+    [],
+  );
+  expect(scanText(`type M = ${mapped} | U\na / ${call}`, 'tests/x.ts')[0]?.rule).toBe('bare-sleep');
+  expect(scanText(`type M = T extends U ? ${mapped} : V\na / ${call}`, 'tests/x.ts')[0]?.rule).toBe(
+    'bare-sleep',
+  );
+});
+
+it('flags a sleep divided on the line after a type alias ending in string, void, or >', () => {
+  const call = `${'sleep'}(1)`;
+  for (const head of ['type M = string', 'type M = void', 'type M = Foo<Bar>'])
+    expect(scanText(`${head}\na / ${call} / 2`, 'tests/x.ts')[0]?.rule, head).toBe('bare-sleep');
+});
+
+it('keeps a slash inside a type alias continued on the next line by |, &, extends, or ?', () => {
+  const call = `${'sleep'}(1)`;
+  expect(scanText(`type M = string\n| Foo / ${call} / Bar`, 'tests/x.ts')).toEqual([]);
+  expect(scanText(`type M = string\n& Foo / ${call} / Bar`, 'tests/x.ts')).toEqual([]);
+  expect(scanText(`type M = Foo\nextends Bar / ${call} / Baz`, 'tests/x.ts')).toEqual([]);
+  expect(scanText(`type M = T\n? U / ${call} / V : W`, 'tests/x.ts')).toEqual([]);
+  expect(scanText(`type M = string\n| Foo\na / ${call} / 2`, 'tests/x.ts')[0]?.rule).toBe(
+    'bare-sleep',
+  );
+});
+
 it('does not flag a regex after an import attribute', () => {
   const call = `${'sleep'}(1)`;
   const withAttr = `import x from "./a" with { type: "json" }\n/${call}/.test(s)`;

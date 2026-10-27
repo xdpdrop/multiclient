@@ -110,12 +110,18 @@ function slashIsRegex(
   exclaimPostfix,
   closeBraceRegex,
   moduleSpecifier,
+  atStmt,
+  inTypeAlias,
 ) {
   if (inCastType && typeNest === 0) return false;
   if (lastNonTrivia === ts.SyntaxKind.ExclamationToken && exclaimPostfix) return false;
+  // A type alias stays open until the statement ends, so `/` after `|`, `&`, `[K]`, or `: T` is a regex.
+  if (inTypeAlias) return true;
   // A module specifier, import attribute, or statement `}` ends the statement, so `/` is a regex.
   // Function and class expressions stay division, so `function(){}/2` does not hide a later call.
   if (lastNonTrivia === ts.SyntaxKind.CloseBraceToken) return closeBraceRegex;
+  // `do { } while (cond)` ends on `)` even when ASI inserts the semicolon on the next line.
+  if (atStmt) return true;
   if (lastNonTrivia === ts.SyntaxKind.StringLiteral && moduleSpecifier) return true;
   if (NO_REGEX_AFTER.has(lastNonTrivia)) return false;
   if (
@@ -358,6 +364,60 @@ function isTypeDecl(st, kind, prev, text, end) {
   );
 }
 
+// A declaration keyword arms only when a binding name follows, not `=`, `(`, `.`, or `:`.
+function bindingNameFollows(text, end) {
+  const ch = nextCode(text, end);
+  if (!ch) return false;
+  if (ch === '\\') return true;
+  const code = ch.codePointAt(0);
+  if (code > 127) return true;
+  return (code >= 65 && code <= 90) || (code >= 97 && code <= 122) || ch === '_' || ch === '$';
+}
+
+// `namespace` / `module` open a statement body before a binding name.
+// A call, assignment, property, or member does not.
+function isNamespaceDecl(st, kind, prev, text, end) {
+  if (kind !== ts.SyntaxKind.NamespaceKeyword && kind !== ts.SyntaxKind.ModuleKeyword) return false;
+  if (prev === ts.SyntaxKind.DotToken || prev === ts.SyntaxKind.QuestionDotToken) return false;
+  if (!bindingNameFollows(text, end)) return false;
+  return (
+    st.atStmt ||
+    prev === ts.SyntaxKind.ExportKeyword ||
+    prev === ts.SyntaxKind.DeclareKeyword ||
+    prev === ts.SyntaxKind.DefaultKeyword
+  );
+}
+
+// `type M = ...` is a type alias. `{ type: ... }`, `import type`, and `type =` are not.
+function isTypeAlias(st, kind, prev, text, end) {
+  if (kind !== ts.SyntaxKind.TypeKeyword) return false;
+  if (prev === ts.SyntaxKind.DotToken || prev === ts.SyntaxKind.QuestionDotToken) return false;
+  if (prev === ts.SyntaxKind.ImportKeyword) return false;
+  if (!bindingNameFollows(text, end)) return false;
+  return st.atStmt || prev === ts.SyntaxKind.ExportKeyword || prev === ts.SyntaxKind.DeclareKeyword;
+}
+
+// `|`, `&`, indexing, and a conditional `?` / `:` keep a type alias on the next line.
+function typeAliasContinues(kind) {
+  return (
+    kind === ts.SyntaxKind.BarToken ||
+    kind === ts.SyntaxKind.AmpersandToken ||
+    kind === ts.SyntaxKind.OpenBracketToken ||
+    kind === ts.SyntaxKind.DotToken ||
+    kind === ts.SyntaxKind.LessThanToken ||
+    kind === ts.SyntaxKind.ExtendsKeyword ||
+    kind === ts.SyntaxKind.QuestionToken ||
+    kind === ts.SyntaxKind.ColonToken
+  );
+}
+
+function trackAngles(box, kind) {
+  if (kind === ts.SyntaxKind.LessThanToken) box.angles++;
+  else if (kind === ts.SyntaxKind.GreaterThanToken) box.angles--;
+  else if (kind === ts.SyntaxKind.GreaterThanGreaterThanToken) box.angles -= 2;
+  else if (kind === ts.SyntaxKind.GreaterThanGreaterThanGreaterThanToken) box.angles -= 3;
+}
+
 // A decorator expression stays open through `@dec`, `@dec.a`, and `@dec()`.
 function advanceDecorator(st, kind, prev, beforePrev) {
   const head = st.decoratorHead;
@@ -393,15 +453,18 @@ function advanceDecorator(st, kind, prev, beforePrev) {
 
 function noteSyntax(st, kind, prev, beforePrev, word, lineBreak, text, end) {
   try {
-    if (
-      lineBreak &&
-      allowsASI(prev) &&
-      !exprFrame(st) &&
-      !st.typeFrame &&
-      !st.parens.length &&
-      !st.brackets
-    )
-      st.atStmt = true;
+    if (lineBreak && !exprFrame(st) && !st.typeFrame && !st.parens.length && !st.brackets) {
+      if (allowsASI(prev)) st.atStmt = true;
+      // End the alias on a line break unless the next token continues it. `string`,
+      // `void`, and `>` do not allow ASI, and the alias still ends before the next
+      // statement. A mapped type's `}` is a nested frame, so it does not end the alias.
+      if (
+        st.typeAlias?.body &&
+        st.frames.length === st.typeAlias.depth &&
+        !typeAliasContinues(kind)
+      )
+        st.typeAlias = null;
+    }
     const colonBrace = st.stmtColon;
     st.stmtColon = false;
     st.sawLabelIdent = kind === ts.SyntaxKind.Identifier && st.atStmt && !st.typeFrame;
@@ -426,12 +489,20 @@ function noteSyntax(st, kind, prev, beforePrev, word, lineBreak, text, end) {
     if (kind === ts.SyntaxKind.InterfaceKeyword || kind === ts.SyntaxKind.EnumKeyword) {
       if (isTypeDecl(st, kind, prev, text, end)) st.declBrace = { angles: 0 };
     }
-    if (st.declBrace && kind !== ts.SyntaxKind.OpenBraceToken) {
-      if (kind === ts.SyntaxKind.LessThanToken) st.declBrace.angles++;
-      else if (kind === ts.SyntaxKind.GreaterThanToken) st.declBrace.angles--;
-      else if (kind === ts.SyntaxKind.GreaterThanGreaterThanToken) st.declBrace.angles -= 2;
-      else if (kind === ts.SyntaxKind.GreaterThanGreaterThanGreaterThanToken)
-        st.declBrace.angles -= 3;
+    if (isNamespaceDecl(st, kind, prev, text, end)) st.nsBrace = { angles: 0 };
+    if (isTypeAlias(st, kind, prev, text, end)) st.typeAlias = { angles: 0, body: false, depth: 0 };
+    if (st.declBrace && kind !== ts.SyntaxKind.OpenBraceToken) trackAngles(st.declBrace, kind);
+    if (st.nsBrace && kind !== ts.SyntaxKind.OpenBraceToken) trackAngles(st.nsBrace, kind);
+    if (st.typeAlias && !st.typeAlias.body && kind !== ts.SyntaxKind.OpenBraceToken)
+      trackAngles(st.typeAlias, kind);
+    if (
+      kind === ts.SyntaxKind.EqualsToken &&
+      st.typeAlias &&
+      !st.typeAlias.body &&
+      st.typeAlias.angles <= 0
+    ) {
+      st.typeAlias.body = true;
+      st.typeAlias.depth = st.frames.length;
     }
     if (kind === ts.SyntaxKind.OpenParenToken) {
       const pendingBody = st.bodies[st.bodies.length - 1];
@@ -479,6 +550,8 @@ function noteSyntax(st, kind, prev, beforePrev, word, lineBreak, text, end) {
     if (kind === ts.SyntaxKind.SemicolonToken) {
       st.bodies.length = 0;
       st.declBrace = null;
+      st.nsBrace = null;
+      st.typeAlias = null;
       while (st.questions.length && st.questions[st.questions.length - 1] >= st.frames.length)
         st.questions.pop();
       st.nextStmt = true;
@@ -516,6 +589,14 @@ function noteSyntax(st, kind, prev, beforePrev, word, lineBreak, text, end) {
         frame = 'type';
         st.declBrace = null;
       }
+      // A namespace body is a statement list. An object literal would make `}` division.
+      if (st.nsBrace && st.nsBrace.angles <= 0 && !tookBody) {
+        frame = true;
+        st.nsBrace = null;
+      }
+      // `{ [K in keyof T]: T[K] }` after `type M =` is a type through the rest of the alias.
+      if (st.typeAlias?.body && !tookBody && st.frames.length === st.typeAlias.depth)
+        frame = 'type';
       st.typeFrame = frame === 'type';
       st.frames.push(frame);
       st.classMark.push(classBody);
@@ -573,6 +654,8 @@ function lex(text) {
     bodies: [],
     closeBraceRegex: false,
     moduleSpecifier: false,
+    nsBrace: null,
+    typeAlias: null,
     expectAttr: false,
     prevWord: '',
     breakBefore: false,
@@ -612,6 +695,8 @@ function lex(text) {
           exclaimPostfix,
           brace.closeBraceRegex,
           brace.moduleSpecifier,
+          brace.atStmt,
+          !!brace.typeAlias?.body,
         )
       ) {
         if (scanner.reScanSlashToken() === ts.SyntaxKind.RegularExpressionLiteral)
@@ -646,6 +731,8 @@ function lex(text) {
           exclaimPostfix,
           brace.closeBraceRegex,
           brace.moduleSpecifier,
+          brace.atStmt,
+          !!brace.typeAlias?.body,
         )
       )
         inCastType = false;
