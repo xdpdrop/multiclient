@@ -132,6 +132,18 @@ it('scans comments inside template interpolations', () => {
   expect(scanText(live, 'tests/x.ts')[0]?.rule).toBe('bare-sleep');
 });
 
+it('does not flag a regex after an import specifier or a block close', () => {
+  const call = `${'sleep'}(1)`;
+  expect(scanText(`import { a } from "./a"\n/${call}/.test(s)`, 'tests/x.ts')).toEqual([]);
+  expect(scanText(`if (x) {}\n/${call}/.test(s)`, 'tests/x.ts')).toEqual([]);
+});
+
+it('flags a sleep after an object division or a function body', () => {
+  const call = `await ${'sleep'}(10)`;
+  expect(scanText(`const o = {} / 2; ${call}`, 'tests/x.ts')[0]?.rule).toBe('bare-sleep');
+  expect(scanText(`function f() {}\n${call}`, 'tests/x.ts')[0]?.rule).toBe('bare-sleep');
+});
+
 it('rejects each planted sleep form in the test tree', () => {
   const call = `${'sleep'}(1)`;
   const root = mkdtempSync(join('tests/unit', '.plant-'));

@@ -102,9 +102,21 @@ function continuesCastType(kind) {
 }
 
 // `as T` / `satisfies T` and postfix `!` end an expression, so the next slash is division.
-function slashIsRegex(prevNonTrivia, lastNonTrivia, inCastType, typeNest, exclaimPostfix) {
+function slashIsRegex(
+  prevNonTrivia,
+  lastNonTrivia,
+  inCastType,
+  typeNest,
+  exclaimPostfix,
+  closeBraceRegex,
+  moduleSpecifier,
+) {
   if (inCastType && typeNest === 0) return false;
   if (lastNonTrivia === ts.SyntaxKind.ExclamationToken && exclaimPostfix) return false;
+  // A module specifier or a statement `}` ends the statement, so `/` is a regex.
+  // A `}` that closes an object or template value stays division.
+  if (lastNonTrivia === ts.SyntaxKind.CloseBraceToken) return closeBraceRegex;
+  if (lastNonTrivia === ts.SyntaxKind.StringLiteral && moduleSpecifier) return true;
   if (NO_REGEX_AFTER.has(lastNonTrivia)) return false;
   if (
     isKeyword(lastNonTrivia) &&
@@ -112,6 +124,74 @@ function slashIsRegex(prevNonTrivia, lastNonTrivia, inCastType, typeNest, exclai
   )
     return false;
   return true;
+}
+
+function opensStatement(st, prev) {
+  return (
+    prev === ts.SyntaxKind.Unknown ||
+    prev === ts.SyntaxKind.SemicolonToken ||
+    prev === ts.SyntaxKind.ElseKeyword ||
+    prev === ts.SyntaxKind.DoKeyword ||
+    prev === ts.SyntaxKind.TryKeyword ||
+    prev === ts.SyntaxKind.FinallyKeyword ||
+    prev === ts.SyntaxKind.CatchKeyword ||
+    prev === ts.SyntaxKind.EqualsGreaterThanToken ||
+    prev === ts.SyntaxKind.CloseParenToken ||
+    prev === ts.SyntaxKind.ImportKeyword ||
+    prev === ts.SyntaxKind.ExportKeyword ||
+    (prev === ts.SyntaxKind.OpenBraceToken && st.frames[st.frames.length - 1] === true) ||
+    (prev === ts.SyntaxKind.CloseBraceToken && st.closeBraceRegex)
+  );
+}
+
+function typeNameEnd(prev) {
+  return (
+    prev === ts.SyntaxKind.AnyKeyword ||
+    prev === ts.SyntaxKind.BigIntKeyword ||
+    prev === ts.SyntaxKind.BooleanKeyword ||
+    prev === ts.SyntaxKind.FalseKeyword ||
+    prev === ts.SyntaxKind.NeverKeyword ||
+    prev === ts.SyntaxKind.NullKeyword ||
+    prev === ts.SyntaxKind.NumberKeyword ||
+    prev === ts.SyntaxKind.ObjectKeyword ||
+    prev === ts.SyntaxKind.StringKeyword ||
+    prev === ts.SyntaxKind.SymbolKeyword ||
+    prev === ts.SyntaxKind.ThisKeyword ||
+    prev === ts.SyntaxKind.TrueKeyword ||
+    prev === ts.SyntaxKind.UndefinedKeyword ||
+    prev === ts.SyntaxKind.UnknownKeyword ||
+    prev === ts.SyntaxKind.VoidKeyword
+  );
+}
+
+function bodyPrev(prev) {
+  return (
+    prev === ts.SyntaxKind.Identifier ||
+    prev === ts.SyntaxKind.ClassKeyword ||
+    prev === ts.SyntaxKind.CloseParenToken ||
+    prev === ts.SyntaxKind.CloseBraceToken ||
+    prev === ts.SyntaxKind.CloseBracketToken ||
+    prev === ts.SyntaxKind.GreaterThanToken ||
+    prev === ts.SyntaxKind.GreaterThanGreaterThanToken ||
+    prev === ts.SyntaxKind.GreaterThanGreaterThanGreaterThanToken ||
+    typeNameEnd(prev)
+  );
+}
+
+function noteSyntax(st, kind, prev) {
+  if (kind === ts.SyntaxKind.ClassKeyword || kind === ts.SyntaxKind.FunctionKeyword) {
+    st.bodyPending = true;
+    return;
+  }
+  if (kind === ts.SyntaxKind.SemicolonToken) st.bodyPending = false;
+  if (kind === ts.SyntaxKind.OpenBraceToken) {
+    const body = st.bodyPending && bodyPrev(prev);
+    if (body) st.bodyPending = false;
+    st.frames.push(body || opensStatement(st, prev));
+    return;
+  }
+  if (kind === ts.SyntaxKind.CloseBraceToken)
+    st.closeBraceRegex = st.frames.length ? st.frames.pop() : true;
 }
 
 function lex(text) {
@@ -124,19 +204,30 @@ function lex(text) {
   let typeNest = 0;
   let exclaimPostfix = false;
   let lastNonTriviaEnd = 0;
+  const brace = { frames: [], bodyPending: false, closeBraceRegex: false, moduleSpecifier: false };
   while (true) {
     let kind = scanner.scan();
     if (kind === ts.SyntaxKind.EndOfFileToken) break;
     if (!isTrivia(kind)) {
+      let templateClose = false;
       if (
         (kind === ts.SyntaxKind.SlashToken || kind === ts.SyntaxKind.SlashEqualsToken) &&
-        slashIsRegex(prevNonTrivia, lastNonTrivia, inCastType, typeNest, exclaimPostfix)
+        slashIsRegex(
+          prevNonTrivia,
+          lastNonTrivia,
+          inCastType,
+          typeNest,
+          exclaimPostfix,
+          brace.closeBraceRegex,
+          brace.moduleSpecifier,
+        )
       ) {
         if (scanner.reScanSlashToken() === ts.SyntaxKind.RegularExpressionLiteral)
           kind = ts.SyntaxKind.RegularExpressionLiteral;
       } else if (kind === ts.SyntaxKind.CloseBraceToken && templateStack.length) {
         const last = templateStack[templateStack.length - 1];
         if (last === ts.SyntaxKind.TemplateHead) {
+          templateClose = true;
           kind = scanner.reScanTemplateToken(false);
           if (kind === ts.SyntaxKind.TemplateTail) templateStack.pop();
         } else templateStack.pop();
@@ -155,9 +246,22 @@ function lex(text) {
       }
       if (
         (kind === ts.SyntaxKind.SlashToken || kind === ts.SyntaxKind.SlashEqualsToken) &&
-        !slashIsRegex(prevNonTrivia, lastNonTrivia, inCastType, typeNest, exclaimPostfix)
+        !slashIsRegex(
+          prevNonTrivia,
+          lastNonTrivia,
+          inCastType,
+          typeNest,
+          exclaimPostfix,
+          brace.closeBraceRegex,
+          brace.moduleSpecifier,
+        )
       )
         inCastType = false;
+      if (!templateClose) noteSyntax(brace, kind, lastNonTrivia);
+      brace.moduleSpecifier =
+        kind === ts.SyntaxKind.StringLiteral &&
+        (lastNonTrivia === ts.SyntaxKind.FromKeyword ||
+          lastNonTrivia === ts.SyntaxKind.ImportKeyword);
       if (kind === ts.SyntaxKind.ExclamationToken) {
         // A line break ends the postfix chain, so this `!` is prefix.
         const lineBreak = text.slice(lastNonTriviaEnd, scanner.getTokenStart()).includes('\n');
