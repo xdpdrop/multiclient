@@ -242,6 +242,14 @@ it('flags a sleep divided after enum or interface used as a property or member',
   expect(scanText(`x = obj.interface + {}/2; ${call}`, 'tests/x.ts')[0]?.rule).toBe('bare-sleep');
 });
 
+it('does not flag a regex after an interface whose generic constraint names enum or interface', () => {
+  const call = `${'sleep'}(1)`;
+  expect(scanText(`interface I<T extends { enum: 1 }> {}\n/${call}/`, 'tests/x.ts')).toEqual([]);
+  expect(scanText(`interface I<T extends { interface: 1 }> {}\n/${call}/`, 'tests/x.ts')).toEqual(
+    [],
+  );
+});
+
 it('flags a sleep divided out of a call or member decorator class', () => {
   const call = `${'sleep'}(1)`;
   expect(scanText(`x = @dec() class C{}/2; ${call}`, 'tests/x.ts')[0]?.rule).toBe('bare-sleep');

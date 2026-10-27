@@ -423,8 +423,9 @@ function noteSyntax(st, kind, prev, beforePrev, word, lineBreak, text, end) {
     if (kind === ts.SyntaxKind.CaseKeyword)
       st.clauses.push({ depth: st.frames.length, qCount: st.questions.length });
     if (kind === ts.SyntaxKind.DefaultKeyword) st.defaultAtStmt = st.atStmt;
-    if (kind === ts.SyntaxKind.InterfaceKeyword || kind === ts.SyntaxKind.EnumKeyword)
-      st.declBrace = isTypeDecl(st, kind, prev, text, end) ? { angles: 0 } : null;
+    if (kind === ts.SyntaxKind.InterfaceKeyword || kind === ts.SyntaxKind.EnumKeyword) {
+      if (isTypeDecl(st, kind, prev, text, end)) st.declBrace = { angles: 0 };
+    }
     if (st.declBrace && kind !== ts.SyntaxKind.OpenBraceToken) {
       if (kind === ts.SyntaxKind.LessThanToken) st.declBrace.angles++;
       else if (kind === ts.SyntaxKind.GreaterThanToken) st.declBrace.angles--;
