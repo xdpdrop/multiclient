@@ -110,12 +110,15 @@ function slashIsRegex(
   exclaimPostfix,
   closeBraceRegex,
   moduleSpecifier,
+  atStmt,
 ) {
   if (inCastType && typeNest === 0) return false;
   if (lastNonTrivia === ts.SyntaxKind.ExclamationToken && exclaimPostfix) return false;
   // A module specifier, import attribute, or statement `}` ends the statement, so `/` is a regex.
   // Function and class expressions stay division, so `function(){}/2` does not hide a later call.
   if (lastNonTrivia === ts.SyntaxKind.CloseBraceToken) return closeBraceRegex;
+  // `do { } while (cond)` ends on `)` even when ASI inserts the semicolon on the next line.
+  if (atStmt) return true;
   if (lastNonTrivia === ts.SyntaxKind.StringLiteral && moduleSpecifier) return true;
   if (NO_REGEX_AFTER.has(lastNonTrivia)) return false;
   if (
@@ -358,6 +361,35 @@ function isTypeDecl(st, kind, prev, text, end) {
   );
 }
 
+// `namespace` / `module` open a statement body. A property or member name does not.
+function isNamespaceDecl(st, kind, prev, text, end) {
+  if (kind !== ts.SyntaxKind.NamespaceKeyword && kind !== ts.SyntaxKind.ModuleKeyword) return false;
+  if (prev === ts.SyntaxKind.DotToken || prev === ts.SyntaxKind.QuestionDotToken) return false;
+  if (nextCode(text, end) === ':') return false;
+  return (
+    st.atStmt ||
+    prev === ts.SyntaxKind.ExportKeyword ||
+    prev === ts.SyntaxKind.DeclareKeyword ||
+    prev === ts.SyntaxKind.DefaultKeyword
+  );
+}
+
+// `type M = ...` is a type alias. `{ type: ... }` and `import type` are not.
+function isTypeAlias(st, kind, prev, text, end) {
+  if (kind !== ts.SyntaxKind.TypeKeyword) return false;
+  if (prev === ts.SyntaxKind.DotToken || prev === ts.SyntaxKind.QuestionDotToken) return false;
+  if (prev === ts.SyntaxKind.ImportKeyword) return false;
+  if (nextCode(text, end) === ':') return false;
+  return st.atStmt || prev === ts.SyntaxKind.ExportKeyword || prev === ts.SyntaxKind.DeclareKeyword;
+}
+
+function trackAngles(box, kind) {
+  if (kind === ts.SyntaxKind.LessThanToken) box.angles++;
+  else if (kind === ts.SyntaxKind.GreaterThanToken) box.angles--;
+  else if (kind === ts.SyntaxKind.GreaterThanGreaterThanToken) box.angles -= 2;
+  else if (kind === ts.SyntaxKind.GreaterThanGreaterThanGreaterThanToken) box.angles -= 3;
+}
+
 // A decorator expression stays open through `@dec`, `@dec.a`, and `@dec()`.
 function advanceDecorator(st, kind, prev, beforePrev) {
   const head = st.decoratorHead;
@@ -426,12 +458,34 @@ function noteSyntax(st, kind, prev, beforePrev, word, lineBreak, text, end) {
     if (kind === ts.SyntaxKind.InterfaceKeyword || kind === ts.SyntaxKind.EnumKeyword) {
       if (isTypeDecl(st, kind, prev, text, end)) st.declBrace = { angles: 0 };
     }
-    if (st.declBrace && kind !== ts.SyntaxKind.OpenBraceToken) {
-      if (kind === ts.SyntaxKind.LessThanToken) st.declBrace.angles++;
-      else if (kind === ts.SyntaxKind.GreaterThanToken) st.declBrace.angles--;
-      else if (kind === ts.SyntaxKind.GreaterThanGreaterThanToken) st.declBrace.angles -= 2;
-      else if (kind === ts.SyntaxKind.GreaterThanGreaterThanGreaterThanToken)
-        st.declBrace.angles -= 3;
+    if (isNamespaceDecl(st, kind, prev, text, end)) st.nsBrace = { angles: 0 };
+    if (isTypeAlias(st, kind, prev, text, end)) st.typeAlias = { angles: 0, body: false, depth: 0 };
+    if (st.declBrace && kind !== ts.SyntaxKind.OpenBraceToken) trackAngles(st.declBrace, kind);
+    if (st.nsBrace && kind !== ts.SyntaxKind.OpenBraceToken) trackAngles(st.nsBrace, kind);
+    if (st.typeAlias && !st.typeAlias.body && kind !== ts.SyntaxKind.OpenBraceToken)
+      trackAngles(st.typeAlias, kind);
+    if (
+      st.typeAlias?.body &&
+      st.frames.length === st.typeAlias.depth &&
+      st.atStmt &&
+      kind !== ts.SyntaxKind.BarToken &&
+      kind !== ts.SyntaxKind.AmpersandToken &&
+      kind !== ts.SyntaxKind.OpenBracketToken &&
+      kind !== ts.SyntaxKind.DotToken &&
+      kind !== ts.SyntaxKind.OpenBraceToken &&
+      kind !== ts.SyntaxKind.LessThanToken &&
+      kind !== ts.SyntaxKind.ExtendsKeyword &&
+      kind !== ts.SyntaxKind.QuestionToken
+    )
+      st.typeAlias = null;
+    if (
+      kind === ts.SyntaxKind.EqualsToken &&
+      st.typeAlias &&
+      !st.typeAlias.body &&
+      st.typeAlias.angles <= 0
+    ) {
+      st.typeAlias.body = true;
+      st.typeAlias.depth = st.frames.length;
     }
     if (kind === ts.SyntaxKind.OpenParenToken) {
       const pendingBody = st.bodies[st.bodies.length - 1];
@@ -479,6 +533,8 @@ function noteSyntax(st, kind, prev, beforePrev, word, lineBreak, text, end) {
     if (kind === ts.SyntaxKind.SemicolonToken) {
       st.bodies.length = 0;
       st.declBrace = null;
+      st.nsBrace = null;
+      st.typeAlias = null;
       while (st.questions.length && st.questions[st.questions.length - 1] >= st.frames.length)
         st.questions.pop();
       st.nextStmt = true;
@@ -516,6 +572,14 @@ function noteSyntax(st, kind, prev, beforePrev, word, lineBreak, text, end) {
         frame = 'type';
         st.declBrace = null;
       }
+      // A namespace body is a statement list. An object literal would make `}` division.
+      if (st.nsBrace && st.nsBrace.angles <= 0 && !tookBody) {
+        frame = true;
+        st.nsBrace = null;
+      }
+      // `{ [K in keyof T]: T[K] }` after `type M =` is a type, so `/` after `}` is a regex.
+      if (st.typeAlias?.body && !tookBody && st.frames.length === st.typeAlias.depth)
+        frame = 'type';
       st.typeFrame = frame === 'type';
       st.frames.push(frame);
       st.classMark.push(classBody);
@@ -573,6 +637,8 @@ function lex(text) {
     bodies: [],
     closeBraceRegex: false,
     moduleSpecifier: false,
+    nsBrace: null,
+    typeAlias: null,
     expectAttr: false,
     prevWord: '',
     breakBefore: false,
@@ -612,6 +678,7 @@ function lex(text) {
           exclaimPostfix,
           brace.closeBraceRegex,
           brace.moduleSpecifier,
+          brace.atStmt,
         )
       ) {
         if (scanner.reScanSlashToken() === ts.SyntaxKind.RegularExpressionLiteral)
@@ -646,6 +713,7 @@ function lex(text) {
           exclaimPostfix,
           brace.closeBraceRegex,
           brace.moduleSpecifier,
+          brace.atStmt,
         )
       )
         inCastType = false;

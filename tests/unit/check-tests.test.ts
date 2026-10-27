@@ -266,6 +266,28 @@ it('flags a sleep divided out of a function after an empty ternary', () => {
   expect(scanText(`a ? : function g(){}/2; ${call}`, 'tests/x.ts')[0]?.rule).toBe('bare-sleep');
 });
 
+it('does not flag a regex on the line after a do-while without a semicolon', () => {
+  const call = `${'sleep'}(1)`;
+  expect(scanText(`do {\n} while (cond)\n/${call}/`, 'tests/x.ts')).toEqual([]);
+  expect(scanText(`do {\n} while (a / ${call})`, 'tests/x.ts')[0]?.rule).toBe('bare-sleep');
+});
+
+it('does not flag a regex inside a namespace body', () => {
+  const call = `${'sleep'}(1)`;
+  expect(scanText(`namespace N {\n  {\n  }\n  /${call}/\n}`, 'tests/x.ts')).toEqual([]);
+  expect(scanText(`namespace N {\n  const x = a / ${call}\n}`, 'tests/x.ts')[0]?.rule).toBe(
+    'bare-sleep',
+  );
+});
+
+it('does not flag a regex after a mapped type literal', () => {
+  const call = `${'sleep'}(1)`;
+  expect(scanText(`type M = { [K in keyof T]: T[K] }\n/${call}/`, 'tests/x.ts')).toEqual([]);
+  expect(scanText(`type M = { [K in keyof T]: T[K] }\na / ${call}`, 'tests/x.ts')[0]?.rule).toBe(
+    'bare-sleep',
+  );
+});
+
 it('does not flag a regex after an import attribute', () => {
   const call = `${'sleep'}(1)`;
   const withAttr = `import x from "./a" with { type: "json" }\n/${call}/.test(s)`;
