@@ -113,8 +113,8 @@ function slashIsRegex(
 ) {
   if (inCastType && typeNest === 0) return false;
   if (lastNonTrivia === ts.SyntaxKind.ExclamationToken && exclaimPostfix) return false;
-  // A module specifier or a statement `}` ends the statement, so `/` is a regex.
-  // A `}` that closes an object or template value stays division.
+  // A module specifier, import attribute, or statement `}` ends the statement, so `/` is a regex.
+  // Function and class expressions stay division, so `function(){}/2` does not hide a later call.
   if (lastNonTrivia === ts.SyntaxKind.CloseBraceToken) return closeBraceRegex;
   if (lastNonTrivia === ts.SyntaxKind.StringLiteral && moduleSpecifier) return true;
   if (NO_REGEX_AFTER.has(lastNonTrivia)) return false;
@@ -178,20 +178,102 @@ function bodyPrev(prev) {
   );
 }
 
-function noteSyntax(st, kind, prev) {
-  if (kind === ts.SyntaxKind.ClassKeyword || kind === ts.SyntaxKind.FunctionKeyword) {
-    st.bodyPending = true;
-    return;
+function isBeforeExpr(kind) {
+  return (
+    (kind >= ts.SyntaxKind.LessThanToken &&
+      kind <= ts.SyntaxKind.CaretEqualsToken &&
+      kind !== ts.SyntaxKind.PlusPlusToken &&
+      kind !== ts.SyntaxKind.MinusMinusToken &&
+      kind !== ts.SyntaxKind.LessThanSlashToken) ||
+    kind === ts.SyntaxKind.OpenParenToken ||
+    kind === ts.SyntaxKind.OpenBracketToken ||
+    kind === ts.SyntaxKind.CommaToken ||
+    kind === ts.SyntaxKind.DotDotDotToken ||
+    kind === ts.SyntaxKind.CaseKeyword ||
+    kind === ts.SyntaxKind.ReturnKeyword ||
+    kind === ts.SyntaxKind.ThrowKeyword ||
+    kind === ts.SyntaxKind.NewKeyword ||
+    kind === ts.SyntaxKind.ExtendsKeyword ||
+    kind === ts.SyntaxKind.InKeyword ||
+    kind === ts.SyntaxKind.InstanceOfKeyword ||
+    kind === ts.SyntaxKind.TypeOfKeyword ||
+    kind === ts.SyntaxKind.VoidKeyword ||
+    kind === ts.SyntaxKind.DeleteKeyword ||
+    kind === ts.SyntaxKind.YieldKeyword ||
+    kind === ts.SyntaxKind.AwaitKeyword
+  );
+}
+
+function exprIntroducer(st, prev) {
+  if (prev === ts.SyntaxKind.ColonToken || prev === ts.SyntaxKind.OpenBraceToken)
+    return st.frames.length > 0 && st.frames[st.frames.length - 1] === false;
+  if (
+    prev === ts.SyntaxKind.Unknown ||
+    prev === ts.SyntaxKind.SemicolonToken ||
+    prev === ts.SyntaxKind.ElseKeyword ||
+    prev === ts.SyntaxKind.DoKeyword ||
+    prev === ts.SyntaxKind.DefaultKeyword ||
+    prev === ts.SyntaxKind.ExportKeyword
+  )
+    return false;
+  if (prev === ts.SyntaxKind.Identifier) return st.prevWord === 'of';
+  return isBeforeExpr(prev);
+}
+
+function noteSyntax(st, kind, prev, beforePrev, word, lineBreak) {
+  try {
+    if (
+      kind === ts.SyntaxKind.StringLiteral &&
+      (prev === ts.SyntaxKind.FromKeyword || prev === ts.SyntaxKind.ImportKeyword)
+    )
+      st.expectAttr = true;
+    else if (st.expectAttr === true && (word === 'with' || word === 'assert'))
+      st.expectAttr = 'brace';
+    else if (kind !== ts.SyntaxKind.OpenBraceToken) st.expectAttr = false;
+    if (kind === ts.SyntaxKind.FunctionKeyword || kind === ts.SyntaxKind.ClassKeyword) {
+      const intro = prev === ts.SyntaxKind.AsyncKeyword ? beforePrev : prev;
+      const introBreak = prev === ts.SyntaxKind.AsyncKeyword ? st.breakBefore : lineBreak;
+      st.bodies.push({
+        expr: exprIntroducer(st, intro) && !(intro === ts.SyntaxKind.ReturnKeyword && introBreak),
+        named: false,
+        closed: false,
+        isDefault: intro === ts.SyntaxKind.DefaultKeyword,
+      });
+    }
+    const top = st.bodies[st.bodies.length - 1];
+    if (
+      top &&
+      !top.closed &&
+      kind !== ts.SyntaxKind.FunctionKeyword &&
+      kind !== ts.SyntaxKind.ClassKeyword
+    ) {
+      if (kind === ts.SyntaxKind.Identifier) top.named = true;
+      else if (
+        kind === ts.SyntaxKind.OpenParenToken ||
+        kind === ts.SyntaxKind.LessThanToken ||
+        kind === ts.SyntaxKind.ExtendsKeyword
+      )
+        top.closed = true;
+    }
+    if (kind === ts.SyntaxKind.SemicolonToken) st.bodies.length = 0;
+    if (kind === ts.SyntaxKind.OpenBraceToken) {
+      const attr = st.expectAttr === 'brace';
+      st.expectAttr = false;
+      let stmt = opensStatement(st, prev);
+      const pending = st.bodies[st.bodies.length - 1];
+      if (pending && bodyPrev(prev)) {
+        st.bodies.pop();
+        const expr = pending.expr || (!pending.named && !pending.isDefault);
+        stmt = !expr;
+      }
+      if (attr) stmt = true;
+      st.frames.push(stmt);
+    } else if (kind === ts.SyntaxKind.CloseBraceToken)
+      st.closeBraceRegex = st.frames.length ? st.frames.pop() : true;
+  } finally {
+    st.prevWord = word;
+    st.breakBefore = lineBreak;
   }
-  if (kind === ts.SyntaxKind.SemicolonToken) st.bodyPending = false;
-  if (kind === ts.SyntaxKind.OpenBraceToken) {
-    const body = st.bodyPending && bodyPrev(prev);
-    if (body) st.bodyPending = false;
-    st.frames.push(body || opensStatement(st, prev));
-    return;
-  }
-  if (kind === ts.SyntaxKind.CloseBraceToken)
-    st.closeBraceRegex = st.frames.length ? st.frames.pop() : true;
 }
 
 function lex(text) {
@@ -204,7 +286,15 @@ function lex(text) {
   let typeNest = 0;
   let exclaimPostfix = false;
   let lastNonTriviaEnd = 0;
-  const brace = { frames: [], bodyPending: false, closeBraceRegex: false, moduleSpecifier: false };
+  const brace = {
+    frames: [],
+    bodies: [],
+    closeBraceRegex: false,
+    moduleSpecifier: false,
+    expectAttr: false,
+    prevWord: '',
+    breakBefore: false,
+  };
   while (true) {
     let kind = scanner.scan();
     if (kind === ts.SyntaxKind.EndOfFileToken) break;
@@ -257,7 +347,17 @@ function lex(text) {
         )
       )
         inCastType = false;
-      if (!templateClose) noteSyntax(brace, kind, lastNonTrivia);
+      if (!templateClose) {
+        const start = scanner.getTokenStart();
+        noteSyntax(
+          brace,
+          kind,
+          lastNonTrivia,
+          prevNonTrivia,
+          text.slice(start, scanner.getTokenEnd()),
+          text.slice(lastNonTriviaEnd, start).includes('\n'),
+        );
+      }
       brace.moduleSpecifier =
         kind === ts.SyntaxKind.StringLiteral &&
         (lastNonTrivia === ts.SyntaxKind.FromKeyword ||

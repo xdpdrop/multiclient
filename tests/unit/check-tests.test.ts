@@ -144,6 +144,20 @@ it('flags a sleep after an object division or a function body', () => {
   expect(scanText(`function f() {}\n${call}`, 'tests/x.ts')[0]?.rule).toBe('bare-sleep');
 });
 
+it('flags a sleep divided out of a function or class expression', () => {
+  const call = `${'sleep'}(1)`;
+  expect(scanText(`function(){}/2; ${call}`, 'tests/x.ts')[0]?.rule).toBe('bare-sleep');
+  expect(scanText(`class{}/${call}`, 'tests/x.ts')[0]?.rule).toBe('bare-sleep');
+});
+
+it('does not flag a regex after an import attribute', () => {
+  const call = `${'sleep'}(1)`;
+  const withAttr = `import x from "./a" with { type: "json" }\n/${call}/.test(s)`;
+  const assertAttr = `import x from "./a" assert { type: "json" }\n/${call}/.test(s)`;
+  expect(scanText(withAttr, 'tests/x.ts')).toEqual([]);
+  expect(scanText(assertAttr, 'tests/x.ts')).toEqual([]);
+});
+
 it('rejects each planted sleep form in the test tree', () => {
   const call = `${'sleep'}(1)`;
   const root = mkdtempSync(join('tests/unit', '.plant-'));
