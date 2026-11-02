@@ -341,6 +341,28 @@ it('does not flag a regex after an import attribute', () => {
   expect(scanText(assertAttr, 'tests/x.ts')).toEqual([]);
 });
 
+it('flags a division after a parenthesized readonly cast', () => {
+  const call = `${'sleep'}(1)`;
+  expect(scanText(`const x = (y as readonly T)<U> / ${call} / 2`, 'tests/x.ts')[0]?.rule).toBe(
+    'bare-sleep',
+  );
+});
+
+it('flags a division after chained non-null assertions', () => {
+  const call = `${'sleep'}(1)`;
+  expect(scanText(`const z = a!!<T> / ${call} / 2`, 'tests/x.ts')[0]?.rule).toBe('bare-sleep');
+});
+
+it('does not flag a regex after a block that closes a case', () => {
+  const call = `${'sleep'}(1)`;
+  expect(scanText(`switch (x) {\n case 1: foo\n {}\n /${call}/\n}`, 'tests/x.ts')).toEqual([]);
+});
+
+it('does not flag a regex on the line after a do-while', () => {
+  const call = `${'sleep'}(1)`;
+  expect(scanText(`do {\n} while (cond)\nlet y\n/${call}/`, 'tests/x.ts')).toEqual([]);
+});
+
 it('rejects each planted sleep form in the test tree', () => {
   const call = `${'sleep'}(1)`;
   const root = mkdtempSync(join('tests/unit', '.plant-'));
