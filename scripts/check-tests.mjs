@@ -92,18 +92,31 @@ function tokenize(text, file) {
     cursor = node.end;
   }
 
-  // `extends` or `?` on the next line keeps a type alias open. The parser starts a
-  // new statement there, which would treat the slashes as division.
-  function emitTypeContinuation(node) {
+  // `extends` or `?` on the next line keeps a type alias open through that line.
+  // A slash on a later line is its own token. One span from the first slash to
+  // the last would hide a call sitting between them.
+  function emitTypeContinuation(node, keywordFrom) {
     const start = node.getStart(sourceFile, false);
     const end = node.end;
     emitGap(cursor, start);
-    const first = text.indexOf('/', start);
-    const last = text.lastIndexOf('/', end - 1);
-    if (first >= start && last > first && last < end) {
-      emitGap(start, first);
-      tokens.push({ kind: ts.SyntaxKind.RegularExpressionLiteral, pos: first, end: last + 1 });
-      emitGap(last + 1, end);
+    const keywordAt = text.indexOf(text.slice(keywordFrom, start).trim(), keywordFrom);
+    const keywordLineBreak = text.indexOf('\n', keywordAt < 0 ? keywordFrom : keywordAt);
+    const keywordLineEnd = keywordLineBreak < 0 ? text.length : keywordLineBreak;
+    if (start < keywordLineEnd) {
+      const regionEnd = Math.min(end, keywordLineEnd);
+      let first = -1;
+      let last = -1;
+      for (let i = start; i < regionEnd; i++) {
+        if (text[i] !== '/') continue;
+        if (first < 0) first = i;
+        last = i;
+      }
+      if (first >= 0 && last > first) {
+        emitGap(start, first);
+        tokens.push({ kind: ts.SyntaxKind.RegularExpressionLiteral, pos: first, end: last + 1 });
+        emitGap(last + 1, regionEnd);
+      } else emitGap(start, regionEnd);
+      if (regionEnd < end) emitGap(regionEnd, end);
     } else emitGap(start, end);
     cursor = end;
   }
@@ -135,7 +148,7 @@ function tokenize(text, file) {
       const between = prev ? text.slice(prev.end, child.getStart(sourceFile, false)) : '';
       const gap = between.trim();
       if (prev?.kind === ts.SyntaxKind.TypeAliasDeclaration && (gap === 'extends' || gap === '?')) {
-        emitTypeContinuation(child);
+        emitTypeContinuation(child, prev.end);
       } else visit(child);
       prev = child;
     }

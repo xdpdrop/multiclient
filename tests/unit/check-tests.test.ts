@@ -333,6 +333,14 @@ it('keeps a slash inside a type alias continued on the next line by |, &, extend
   );
 });
 
+it('flags a sleep between slashes on the line after an extends or ? continuation', () => {
+  const call = `${'sleep'}(1)`;
+  expect(scanText(`type M = Foo\nextends\nBar / ${call} / Baz`, 'tests/x.ts')[0]?.rule).toBe(
+    'bare-sleep',
+  );
+  expect(scanText(`type M = T\n?\nU / ${call} / V`, 'tests/x.ts')[0]?.rule).toBe('bare-sleep');
+});
+
 it('does not flag a regex after an import attribute', () => {
   const call = `${'sleep'}(1)`;
   const withAttr = `import x from "./a" with { type: "json" }\n/${call}/.test(s)`;
