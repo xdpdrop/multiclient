@@ -333,12 +333,42 @@ it('keeps a slash inside a type alias continued on the next line by |, &, extend
   );
 });
 
+it('flags a sleep between slashes on the line after an extends or ? continuation', () => {
+  const call = `${'sleep'}(1)`;
+  expect(scanText(`type M = Foo\nextends\nBar / ${call} / Baz`, 'tests/x.ts')[0]?.rule).toBe(
+    'bare-sleep',
+  );
+  expect(scanText(`type M = T\n?\nU / ${call} / V`, 'tests/x.ts')[0]?.rule).toBe('bare-sleep');
+});
+
 it('does not flag a regex after an import attribute', () => {
   const call = `${'sleep'}(1)`;
   const withAttr = `import x from "./a" with { type: "json" }\n/${call}/.test(s)`;
   const assertAttr = `import x from "./a" assert { type: "json" }\n/${call}/.test(s)`;
   expect(scanText(withAttr, 'tests/x.ts')).toEqual([]);
   expect(scanText(assertAttr, 'tests/x.ts')).toEqual([]);
+});
+
+it('flags a division after a parenthesized readonly cast', () => {
+  const call = `${'sleep'}(1)`;
+  expect(scanText(`const x = (y as readonly T)<U> / ${call} / 2`, 'tests/x.ts')[0]?.rule).toBe(
+    'bare-sleep',
+  );
+});
+
+it('flags a division after chained non-null assertions', () => {
+  const call = `${'sleep'}(1)`;
+  expect(scanText(`const z = a!!<T> / ${call} / 2`, 'tests/x.ts')[0]?.rule).toBe('bare-sleep');
+});
+
+it('does not flag a regex after a block that closes a case', () => {
+  const call = `${'sleep'}(1)`;
+  expect(scanText(`switch (x) {\n case 1: foo\n {}\n /${call}/\n}`, 'tests/x.ts')).toEqual([]);
+});
+
+it('does not flag a regex on the line after a do-while', () => {
+  const call = `${'sleep'}(1)`;
+  expect(scanText(`do {\n} while (cond)\nlet y\n/${call}/`, 'tests/x.ts')).toEqual([]);
 });
 
 it('rejects each planted sleep form in the test tree', () => {
